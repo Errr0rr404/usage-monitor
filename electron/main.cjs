@@ -35,10 +35,33 @@ function pruneLimitState(accountId) {
   }
 }
 
+function trayNativeImage(left) {
+  const icon = nativeImage.createEmpty();
+  const base = darwin ? 22 : 16;
+  for (const scaleFactor of [1, 2]) {
+    const size = base * scaleFactor;
+    icon.addRepresentation({
+      scaleFactor,
+      width: size,
+      height: size,
+      buffer: trayPng(size, { left }),
+    });
+  }
+  icon.setTemplateImage(false);
+  return icon;
+}
+
+function hideDock() {
+  if (!darwin) return;
+  if (typeof app.setActivationPolicy === 'function') app.setActivationPolicy('accessory');
+  else if (app.dock) app.dock.hide();
+}
+
 function updateTray(result) {
   if (result) lastResult = result;
   if (!tray || !lastResult) return;
   const display = trayDisplay(lastResult);
+  tray.setImage(trayNativeImage(display.left));
   tray.setToolTip(display.tooltip);
   if (darwin) tray.setTitle(display.percentText);
   if (!Notification.isSupported()) return;
@@ -78,7 +101,9 @@ function persistBounds() {
 function showWindow() {
   if (!win) return;
   win.show();
+  if (darwin && typeof app.focus === 'function') app.focus({ steal: true });
   win.focus();
+  hideDock();
 }
 
 function hideWindow() {
@@ -96,16 +121,7 @@ function pinWindow(target, pinned) {
 }
 
 function createTray() {
-  const icon = nativeImage.createEmpty();
-  if (darwin) {
-    icon.addRepresentation({ scaleFactor: 1, width: 22, height: 22, buffer: trayPng(22) });
-    icon.addRepresentation({ scaleFactor: 2, width: 44, height: 44, buffer: trayPng(44) });
-    icon.setTemplateImage(true);
-  } else {
-    icon.addRepresentation({ scaleFactor: 1, width: 16, height: 16, buffer: trayPng(16, [255, 255, 255]) });
-    icon.addRepresentation({ scaleFactor: 2, width: 32, height: 32, buffer: trayPng(32, [255, 255, 255]) });
-  }
-  tray = new Tray(icon);
+  tray = new Tray(trayNativeImage(null));
   tray.setToolTip('Usage Monitor');
   const menu = Menu.buildFromTemplate([
     { label: 'Show Usage Monitor', click: showWindow },
@@ -144,7 +160,7 @@ function createWindow() {
     resizable: true,
     maximizable: false,
     fullscreenable: false,
-    skipTaskbar: false,
+    skipTaskbar: darwin,
     alwaysOnTop: settings.pinned !== false,
     hasShadow: true,
     roundedCorners: true,
@@ -485,6 +501,7 @@ ipcMain.handle('auth:choose', async (_event, provider) => {
 });
 
 app.whenReady().then(() => {
+  hideDock();
   createTray();
   createWindow();
   app.on('activate', () => {

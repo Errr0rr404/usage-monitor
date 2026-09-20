@@ -8,7 +8,7 @@ It runs on macOS and Windows.
 
 ## Menu bar
 
-The menu bar on a Mac, and the tray icon on Windows, show one account.
+The menu bar on a Mac, and the tray icon on Windows, show one account. On a Mac, Usage Monitor stays there and does not take a place in the Dock. The ring uses the app blue and fills with what is left. Under 15 percent it turns orange, then red at 0.
 
 - One signed-in account is used automatically.
 - With more than one, tap the star on the account you want up there. That reading stays until you pick another.
