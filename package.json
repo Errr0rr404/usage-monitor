@@ -1,14 +1,14 @@
 {
   "name": "usage-monitor",
   "productName": "Usage Monitor",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "license": "MIT",
   "author": "Errr0rr404",
   "repository": {
     "type": "git",
     "url": "https://github.com/Errr0rr404/usage-monitor.git"
   },
-  "description": "Floating desktop meter for Grok, MiniMax, Codex, Claude, Cursor, Copilot, and Gemini usage.",
+  "description": "Floating desktop meter for Grok, MiniMax, Codex, Claude, Cursor, Copilot, Gemini, and Muse usage.",
   "main": "electron/main.cjs",
   "scripts": {
     "start": "electron .",

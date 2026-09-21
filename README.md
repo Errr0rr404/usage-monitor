@@ -1,8 +1,8 @@
 # Usage Monitor
 
-A small floating desktop meter for Grok, MiniMax, Codex, Claude, Cursor, Copilot, and Gemini. Sign in with your usual browser. Usage Monitor reads what is left on each account and keeps the session on this computer.
+A small floating desktop meter for Grok, MiniMax, Codex, Claude, Cursor, Copilot, Gemini, and Muse. Sign in with your usual browser. Usage Monitor reads what is left on each account and keeps the session on this computer.
 
-![Usage Monitor with Grok, MiniMax, Codex, Cursor, Copilot, and Gemini](docs/screenshot.jpg)
+![Usage Monitor with Grok, MiniMax, Codex, Cursor, Copilot, Gemini, and Muse](docs/screenshot.jpg)
 
 It runs on macOS and Windows.
 
@@ -21,7 +21,7 @@ If a usage window drops under 15 percent, Usage Monitor sends one notification. 
 
 ## Sign in
 
-Each service opens the public login that can hand a session back to an app on this computer. The approval page may say Grok CLI, MiniMax CLI, Codex, Claude Code, Cursor, Visual Studio Code, or Antigravity. That is expected. Usage Monitor does not have its own account, and it does not send your login anywhere except the service you picked.
+Each service opens the public login that can hand a session back to an app on this computer. The approval page may say Grok CLI, MiniMax CLI, Codex, Claude Code, Cursor, Visual Studio Code, Antigravity, or Meta. That is expected. Usage Monitor does not have its own account, and it does not send your login anywhere except the service you picked.
 
 Sessions are locked with the operating system: the macOS keychain, or Windows DPAPI.
 

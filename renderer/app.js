@@ -34,9 +34,14 @@ const PROVIDERS = [
     name: 'Gemini',
     help: 'Your usual browser opens the Google login. The approval page says Antigravity, because Google retired the Gemini CLI login for personal accounts. The session stays on this computer.',
   },
+  {
+    id: 'muse',
+    name: 'Muse',
+    help: 'Your usual browser opens the Meta login. Meta asks for a code. Usage Monitor shows that code in this window and copies it. Only Meta accounts with a Muse Code subscription report usage.',
+  },
 ];
 
-const ORDER = ['grok', 'minimax', 'codex', 'claude', 'cursor', 'copilot', 'gemini'];
+const ORDER = ['grok', 'minimax', 'codex', 'claude', 'cursor', 'copilot', 'gemini', 'muse'];
 
 const state = {
   accounts: [],

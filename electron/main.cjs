@@ -16,7 +16,7 @@ const windows = process.platform === 'win32';
 const preview = process.argv.includes('--preview') || process.argv.includes('--shot');
 const emptyPreview = process.argv.includes('--empty');
 const formPreview = process.argv.includes('--form');
-const PROVIDERS = new Set(['grok', 'minimax', 'codex', 'claude', 'cursor', 'copilot', 'gemini']);
+const PROVIDERS = new Set(['grok', 'minimax', 'codex', 'claude', 'cursor', 'copilot', 'gemini', 'muse']);
 
 app.setName('Usage Monitor');
 if (windows) app.setAppUserModelId('app.usage.monitor');

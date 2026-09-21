@@ -388,6 +388,69 @@ async function signInCopilot(onProgress, session) {
   throw new Error('Sign-in took too long. Try again.');
 }
 
+async function signInMuse(onProgress, session) {
+  const spec = PROVIDERS.muse;
+  const baseHeaders = { Accept: 'application/json', 'x-api-version': '1.0.0' };
+  const codeResponse = await fetch(spec.device, {
+    method: 'POST',
+    headers: { ...baseHeaders, 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ client_id: spec.clientId }),
+    signal: AbortSignal.timeout(20000),
+  });
+  const data = await codeResponse.json().catch(() => ({}));
+  if (!codeResponse.ok || !data.device_code || !data.user_code) {
+    throw new Error('Meta could not start Muse sign-in. Try again.');
+  }
+  const page = data.verification_uri_complete || data.verification_uri;
+  if (!page || !/^https:\/\//i.test(page)) throw new Error('Meta did not return a sign-in page.');
+  if (session.canceled) return { ok: false, canceled: true };
+  if (onProgress) {
+    onProgress({
+      code: data.user_code,
+      message: 'Enter this code on the Meta page. It is also copied, so you can paste it.',
+    });
+  }
+  await waitFor(session, 700);
+  if (session.canceled) return { ok: false, canceled: true };
+  await shell.openExternal(page);
+  const deadline = deadlineFrom(data.expires_in || 900);
+  let wait = Math.max(5, Number(data.interval) || 5) * 1000;
+  while (Date.now() < deadline) {
+    if (session.canceled) return { ok: false, canceled: true };
+    await waitFor(session, wait);
+    if (session.canceled) return { ok: false, canceled: true };
+    let tokenResponse;
+    try {
+      tokenResponse = await fetch(spec.token, {
+        method: 'POST',
+        headers: { ...baseHeaders, 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          grant_type: 'urn:ietf:params:oauth:grant-type:device_code',
+          client_id: spec.clientId,
+          device_code: data.device_code,
+        }),
+        signal: AbortSignal.timeout(20000),
+      });
+    } catch {
+      continue;
+    }
+    const token = await tokenResponse.json().catch(() => ({}));
+    if (token.access_token) {
+      return { ok: true, secret: bundleSecret(token), email: null, accountId: null };
+    }
+    if (token.error === 'authorization_pending') continue;
+    if (token.error === 'slow_down') {
+      wait = Math.min(wait + 5000, 30000);
+      continue;
+    }
+    if (token.error === 'access_denied') return { ok: false, canceled: true };
+    if (token.error === 'expired_token') throw new Error('Sign-in took too long. Try again.');
+    if (!tokenResponse.ok && (tokenResponse.status === 408 || tokenResponse.status === 429 || tokenResponse.status >= 500)) continue;
+    if (!tokenResponse.ok) throw new Error('Meta rejected the Muse sign-in.');
+  }
+  throw new Error('Sign-in took too long. Try again.');
+}
+
 function signIn(provider, options = {}) {
   const onProgress = options.onProgress;
   if (provider === 'minimax') {
@@ -402,10 +465,14 @@ function signIn(provider, options = {}) {
         if (current === session) current = null;
       });
   }
-  if (provider === 'cursor' || provider === 'copilot') {
+  if (provider === 'cursor' || provider === 'copilot' || provider === 'muse') {
     const session = { canceled: false, finish: null };
     current = session;
-    const run = provider === 'cursor' ? signInCursor(onProgress, session) : signInCopilot(onProgress, session);
+    const run = provider === 'cursor'
+      ? signInCursor(onProgress, session)
+      : provider === 'copilot'
+        ? signInCopilot(onProgress, session)
+        : signInMuse(onProgress, session);
     return run
       .catch((error) => ({
         ok: false,
