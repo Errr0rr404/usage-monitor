@@ -58,8 +58,10 @@ jobs:
           security create-keychain -p "$keychain_password" "$keychain_path"
           security set-keychain-settings -lut 21600 "$keychain_path"
           security unlock-keychain -p "$keychain_password" "$keychain_path"
-          security import "$p12_path" -k "$keychain_path" -P "$CSC_KEY_PASSWORD" -T /usr/bin/codesign -T /usr/bin/security -T /usr/bin/productbuild
+          security import "$p12_path" -k "$keychain_path" -P "$CSC_KEY_PASSWORD" -A -t cert -f pkcs12 -T /usr/bin/codesign -T /usr/bin/security -T /usr/bin/productbuild
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$keychain_password" "$keychain_path"
+          security list-keychains -d user -s "$keychain_path" $(security list-keychains -d user | tr -d '"')
+          security default-keychain -s "$keychain_path"
           # electron-builder unlocks its own keychain with the certificate password, which fails.
           # Hand it this keychain instead.
           unset CSC_LINK
