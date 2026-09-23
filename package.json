@@ -1,7 +1,7 @@
 {
   "name": "usage-monitor",
   "productName": "Usage Monitor",
-  "version": "0.3.3",
+  "version": "0.3.4",
   "license": "MIT",
   "author": "Errr0rr404",
   "repository": {
@@ -14,7 +14,7 @@
     "start": "electron .",
     "test": "node --test lib/parse.test.cjs lib/login-capture.test.cjs lib/oauth.test.cjs lib/tray.test.cjs lib/tray-icon.test.cjs",
     "dist": "electron-builder --publish never",
-    "dist:mac": "electron-builder --mac dmg zip --arm64 --x64 --publish never",
+    "dist:mac": "electron-builder --mac dmg zip --arm64 --x64 --publish never && node scripts/notarize-mac-disk-images.cjs",
     "dist:win": "electron-builder --win nsis --x64 --ia32 --publish never"
   },
   "build": {
@@ -36,7 +36,10 @@
     "mac": {
       "category": "public.app-category.utilities",
       "icon": "build/icon.png",
-      "identity": null,
+      "hardenedRuntime": true,
+      "notarize": true,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.inherit.plist",
       "extendInfo": {
         "LSUIElement": true
       },

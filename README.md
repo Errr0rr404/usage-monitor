@@ -38,7 +38,7 @@ Installers are on the [latest release](https://github.com/Errr0rr404/usage-monit
 
 The zip files are the same Mac apps without a disk image.
 
-These builds are not signed. On a Mac, Control-click Usage Monitor the first time and choose Open. On Windows, if SmartScreen appears, choose More info, then Run anyway. Usage Monitor needs Windows 10 or newer, including 32-bit Windows.
+Mac disk images are signed with a Developer ID and notarized by Apple. Open the disk image and drag Usage Monitor into Applications. On Windows, if SmartScreen appears, choose More info, then Run anyway. Usage Monitor needs Windows 10 or newer, including 32-bit Windows.
 
 ## Run it
 
@@ -56,7 +56,7 @@ npm run dist:mac
 npm run dist:win
 ```
 
-`dist:mac` builds Apple silicon and Intel. `dist:win` builds 64-bit and 32-bit installers. A tag named `v*` runs both on GitHub Actions and attaches the files to that release.
+`dist:mac` builds Apple silicon and Intel, then notarizes the disk images. It needs `APPLE_API_KEY` (path to the App Store Connect `.p8` key), `APPLE_API_KEY_ID`, and `APPLE_API_ISSUER`, and a Developer ID Application certificate in the keychain. `dist:win` builds 64-bit and 32-bit installers. A tag named `v*` runs both on GitHub Actions and attaches the files to that release.
 
 ## License
 
