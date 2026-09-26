@@ -1,4 +1,6 @@
 node_modules
 dist
+dist-win
+videos
 .DS_Store
 *.log
