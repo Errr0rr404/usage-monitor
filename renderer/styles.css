@@ -323,6 +323,11 @@ footer button:hover,
   color: var(--accent);
 }
 
+.account-actions button.live-on {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+}
+
 .account-actions button.danger,
 .error { color: var(--stop); }
 

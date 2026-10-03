@@ -37,7 +37,7 @@ const PROVIDERS = [
   {
     id: 'muse',
     name: 'Muse',
-    help: 'Your usual browser opens the Meta login. Meta asks for a code. Usage Monitor shows that code in this window and copies it. Only Meta accounts with a Muse Code subscription report usage.',
+    help: 'Your usual browser opens the Meta login. Meta asks for a code. Usage Monitor shows that code in this window and copies it. Meta often leaves the usage meters out of its reply, so the board says so instead of guessing; the gauge button on the card spends one tiny request per refresh to read the real meter.',
   },
 ];
 
@@ -95,6 +95,10 @@ function iconStar(filled) {
 
 function iconClose() {
   return `<svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="M4.2 4.2 11.8 11.8M11.8 4.2 4.2 11.8" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"></path></svg>`;
+}
+
+function iconGauge() {
+  return `<svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.6 12.2a6.2 6.2 0 1 1 10.8 0" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"></path><path d="M8 10.4 10.6 7" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"></path></svg>`;
 }
 
 function providerName(id) {
@@ -249,16 +253,23 @@ function renderAccount(account) {
   const canChooseDefault = state.accounts.length > 1;
   const defaultLabel = account.isDefault ? 'Default' : 'Set default';
   const defaultAction = canChooseDefault
-    ? `<button type="button" data-default="${esc(account.id)}" aria-pressed="${account.isDefault ? 'true' : 'false'}" aria-label="${defaultLabel}" title="${defaultLabel}">${iconStar(account.isDefault)}</button>`
+    ? `<button type="button" data-default="${esc(account.id)}" aria-pressed="${account.isDefault ? 'true' : 'false'}" aria-label="${esc(defaultLabel)}" title="${esc(defaultLabel)}">${iconStar(account.isDefault)}</button>`
+    : '';
+  // Meta only publishes the Muse meters inside a streamed model reply, so asking
+  // for them costs a real (tiny) call. That has to be a choice, per account.
+  const liveOn = Boolean(account.meta && account.meta.museLiveUsage);
+  const liveLabel = liveOn ? 'Stop reading the live meter' : 'Read the live meter';
+  const liveAction = account.provider === 'muse'
+    ? `<button type="button" class="${liveOn ? 'live-on' : ''}" data-muse-live="${esc(account.id)}" aria-pressed="${liveOn ? 'true' : 'false'}" aria-label="${esc(liveLabel)}" title="${esc(liveLabel)}">${iconGauge()}</button>`
     : '';
   const removeLabel = confirming ? 'Confirm remove' : 'Remove';
-  const actions = `${defaultAction}<button type="button" class="${confirming ? 'danger' : ''}" data-remove="${esc(account.id)}" aria-label="${removeLabel}" title="${removeLabel}">${iconClose()}</button>`;
+  const actions = `${defaultAction}${liveAction}<button type="button" class="${confirming ? 'danger' : ''}" data-remove="${esc(account.id)}" aria-label="${esc(removeLabel)}" title="${esc(removeLabel)}">${iconClose()}</button>`;
   let body = '<p class="meter-note">Checking…</p>';
   if (snapshot?.ok === false) body = `<p class="error">${esc(snapshot.error || 'Could not load usage.')}</p>`;
   else if (snapshot?.ok) {
     body = snapshot.windows.length
       ? `<div class="dials">${snapshot.windows.map(renderMeter).join('')}</div>`
-      : '<p class="meter-note">No usage window came back.</p>';
+      : `<p class="meter-note">${esc(snapshot.note || 'No usage window came back.')}</p>`;
   } else if (!state.refreshing) body = '<p class="meter-note">Not checked yet.</p>';
 
   const title = [plan, name].filter(Boolean).join(' · ');
@@ -291,7 +302,7 @@ function renderBoard() {
       if (snapshot?.ok === false) reading = 'Needs a new login';
       else if (snapshot?.ok) {
         const window = tightest(snapshot.windows);
-        if (!window) reading = 'No window';
+        if (!window) reading = snapshot.note ? 'Not reported' : 'No window';
         else {
           const view = presentWindow(window);
           reading = `${window.label} ${view.value}${view.unit ? ` ${view.unit}` : ''}`;
@@ -507,6 +518,17 @@ board.addEventListener('click', async (event) => {
     state.pendingRemove = null;
     state.accounts = await desk.setDefaultAccount(id);
     render();
+    return;
+  }
+  const live = event.target.closest('[data-muse-live]');
+  if (live) {
+    const id = live.dataset.museLive;
+    const account = state.accounts.find((item) => item.id === id);
+    if (!account) return;
+    state.pendingRemove = null;
+    const updated = await desk.updateAccount(id, { meta: { museLiveUsage: !account.meta?.museLiveUsage } });
+    if (updated) state.accounts = state.accounts.map((item) => (item.id === id ? updated : item));
+    await refresh();
     return;
   }
   const remove = event.target.closest('[data-remove]');
