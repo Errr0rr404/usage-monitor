@@ -107,6 +107,18 @@ function titlePlan(plan) {
   return plan.charAt(0).toUpperCase() + plan.slice(1);
 }
 
+// The name a person gave a login is what tells two accounts of the same service
+// apart, so it rides along after the plan. Drop it when it only echoes the group
+// heading or the plan, which keeps single-account services quiet.
+function accountTag(account, plan) {
+  const label = String(account.label || '').trim();
+  if (!label) return '';
+  const lower = label.toLowerCase();
+  if (lower === providerName(account.provider).toLowerCase()) return '';
+  if (plan && lower === String(plan).toLowerCase()) return '';
+  return label;
+}
+
 function formatCount(value) {
   return new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 }).format(value);
 }
@@ -232,6 +244,7 @@ function renderMeter(window) {
 function renderAccount(account) {
   const snapshot = state.snapshots[account.id];
   const plan = titlePlan(snapshot?.plan);
+  const name = accountTag(account, plan);
   const confirming = state.pendingRemove === account.id;
   const canChooseDefault = state.accounts.length > 1;
   const defaultLabel = account.isDefault ? 'Default' : 'Set default';
@@ -248,9 +261,10 @@ function renderAccount(account) {
       : '<p class="meter-note">No usage window came back.</p>';
   } else if (!state.refreshing) body = '<p class="meter-note">Not checked yet.</p>';
 
+  const title = [plan, name].filter(Boolean).join(' · ');
   return `<article class="account">
     <div class="account-head">
-      <h3>${plan ? esc(plan) : ''}</h3>
+      <h3${title ? ` title="${esc(title)}"` : ''}>${plan ? esc(plan) : ''}${name ? ` <span class="plan${plan ? '' : ' lead'}">[${esc(name)}]</span>` : ''}</h3>
       <div class="account-actions">${actions}</div>
     </div>
     ${body}
@@ -283,7 +297,9 @@ function renderBoard() {
           reading = `${window.label} ${view.value}${view.unit ? ` ${view.unit}` : ''}`;
         }
       }
-      return `<div class="compact-row"><strong>${esc(providerName(account.provider))}</strong><span>${esc(reading)}</span></div>`;
+      const name = accountTag(account, titlePlan(snapshot?.ok ? snapshot.plan : null));
+      const full = [providerName(account.provider), name].filter(Boolean).join(' · ');
+      return `<div class="compact-row"><strong title="${esc(full)}">${esc(providerName(account.provider))}${name ? ` <span class="plan">${esc(name)}</span>` : ''}</strong><span>${esc(reading)}</span></div>`;
     }).join('');
     return;
   }

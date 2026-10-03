@@ -286,6 +286,14 @@ footer button:hover,
   font-size: 10px;
 }
 
+/* No plan to sit after, so the name carries the whole title. */
+.plan.lead {
+  margin-left: 0;
+  color: inherit;
+  font-size: inherit;
+  font-weight: inherit;
+}
+
 .identity,
 .invert {
   color: var(--quiet);
