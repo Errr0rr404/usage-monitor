@@ -13,6 +13,7 @@ function emptyState() {
   return {
     settings: { pinned: true, bounds: null, defaultAccountId: null },
     accounts: [],
+    meters: {},
   };
 }
 
@@ -23,6 +24,7 @@ function readState() {
     return {
       settings: { pinned: true, bounds: null, defaultAccountId: null, ...(parsed.settings || {}) },
       accounts: Array.isArray(parsed.accounts) ? parsed.accounts : [],
+      meters: parsed.meters && typeof parsed.meters === 'object' ? parsed.meters : {},
     };
   } catch {
     return emptyState();
@@ -144,9 +146,22 @@ function updateSecret(id, secret) {
 function removeAccount(id) {
   const state = readState();
   state.accounts = state.accounts.filter((account) => account.id !== id);
+  if (state.meters) delete state.meters[id];
   state.settings.defaultAccountId = resolveDefaultId(state.accounts, state.settings.defaultAccountId === id ? null : state.settings.defaultAccountId);
   writeState(state);
   return listPublic();
+}
+
+function getMeter(id) {
+  const meter = readState().meters?.[id];
+  return meter && typeof meter === 'object' ? meter : null;
+}
+
+function setMeter(id, meter) {
+  if (!id || !meter || !Array.isArray(meter.windows) || !meter.windows.length) return;
+  const state = readState();
+  state.meters[id] = { windows: meter.windows, savedAt: meter.savedAt || new Date().toISOString() };
+  writeState(state);
 }
 
 function eachSecret() {
@@ -176,4 +191,6 @@ module.exports = {
   updateSecret,
   removeAccount,
   eachSecret,
+  getMeter,
+  setMeter,
 };

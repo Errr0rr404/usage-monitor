@@ -230,7 +230,10 @@ async function refreshAll() {
         };
         return;
       }
-      const snapshot = await fetchUsage(account, secret);
+      const snapshot = await fetchUsage({
+        ...account,
+        meta: { ...(account.meta || {}), museMeter: store.getMeter(account.id) },
+      }, secret);
       if (snapshot.secret) {
         try {
           store.updateSecret(account.id, snapshot.secret);
@@ -238,6 +241,14 @@ async function refreshAll() {
           // The refreshed session still works for this pass even if it could not be locked.
         }
         delete snapshot.secret;
+      }
+      if (snapshot.meter) {
+        try {
+          store.setMeter(account.id, snapshot.meter);
+        } catch {
+          // This pass still shows the reading if the last real week could not be saved.
+        }
+        delete snapshot.meter;
       }
       snapshots[account.id] = snapshot;
     }));
