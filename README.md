@@ -19,6 +19,8 @@ Usage Monitor refreshes every 5 minutes. Change that, or turn it off, from the s
 
 If a usage window drops under 15 percent, Usage Monitor sends one notification. It does not ping again until that window recovers and drops again.
 
+When a 5-hour, weekly, or monthly window resets, Usage Monitor brings the window forward, plays a short siren, and shows a joke with an alert. The first check after an update only records the current deadlines.
+
 ## Sign in
 
 Each service opens the public login that can hand a session back to an app on this computer. The approval page may say Grok CLI, MiniMax CLI, Codex, Claude Code, Cursor, Visual Studio Code, Antigravity, or Meta. That is expected. Usage Monitor does not have its own account, and it does not send your login anywhere except the service you picked.

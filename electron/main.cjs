@@ -1,4 +1,5 @@
 const { app, BrowserWindow, Tray, Menu, dialog, ipcMain, nativeImage, Notification, clipboard } = require('electron');
+const { spawn } = require('child_process');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -6,6 +7,7 @@ const store = require('./store.cjs');
 const { fetchUsage } = require('../lib/fetch.cjs');
 const { cleanSecret, extractCodexAuth, extractGrokAuth } = require('../lib/parse.cjs');
 const { previewState } = require('../lib/preview.cjs');
+const { collectResets, describeResets, sirenWav } = require('../lib/reset-alarm.cjs');
 const { trayPng } = require('../lib/tray-icon.cjs');
 const { remainingLeft, trayDisplay, providerName } = require('../lib/tray.cjs');
 const { signIn, cancelSignIn } = require('./browser-login.cjs');
@@ -20,6 +22,7 @@ const PROVIDERS = new Set(['grok', 'minimax', 'codex', 'claude', 'cursor', 'copi
 
 app.setName('Usage Monitor');
 if (windows) app.setAppUserModelId('app.usage.monitor');
+if (preview) app.setPath('userData', path.join(os.tmpdir(), 'usage-monitor-preview'));
 
 let win = null;
 let tray = null;
@@ -27,6 +30,8 @@ let normalBounds = null;
 let compact = false;
 let refreshing = null;
 let lastResult = null;
+let suppressBounds = false;
+let alarmRestore = null;
 const limitState = new Map();
 
 function pruneLimitState(accountId) {
@@ -93,7 +98,7 @@ if (!gotLock) {
 }
 
 function persistBounds() {
-  if (!win || preview) return;
+  if (!win || preview || suppressBounds) return;
   const bounds = normalBounds || win.getBounds();
   store.updateSettings({ bounds, pinned: win.isAlwaysOnTop() });
 }
@@ -176,12 +181,26 @@ function createWindow() {
   });
 
   if (settings.pinned !== false) pinWindow(win, true);
+  applyTransparency(settings.transparency);
 
   const query = {};
   if (process.argv.includes('--menu')) query.menu = '1';
   if (process.argv.includes('--compact')) query.compact = '1';
+  const demoAlarm = preview && process.argv.includes('--alarm');
+  const showDemoAlarm = () => {
+    setTimeout(() => {
+      presentResetAlarm([
+        { provider: 'codex', accountLabel: 'Work', windowLabel: '5 hours' },
+        { provider: 'claude', accountLabel: 'Claude', windowLabel: 'Week' },
+        { provider: 'grok', accountLabel: 'Personal', windowLabel: 'Month' },
+      ]);
+    }, 400);
+  };
   win.loadFile(path.join(__dirname, '../renderer/index.html'), { query });
-  win.once('ready-to-show', () => win.show());
+  win.once('ready-to-show', () => {
+    win.show();
+    if (demoAlarm) showDemoAlarm();
+  });
   win.on('close', (event) => {
     if (preview) return;
     event.preventDefault();
@@ -254,6 +273,13 @@ async function refreshAll() {
     }));
     const result = { accounts: store.listPublic(), snapshots };
     updateTray(result);
+    const found = collectResets({
+      marks: store.getResetMarks(),
+      accounts: result.accounts,
+      snapshots,
+    });
+    store.setResetMarks(found.marks);
+    if (found.events.length) presentResetAlarm(found.events);
     return result;
   })().finally(() => {
     refreshing = null;
@@ -309,12 +335,29 @@ function defaultAuthFile(provider) {
   return null;
 }
 
+function normalizeTransparency(value) {
+  const next = Math.round(Number(value));
+  if (!Number.isFinite(next)) return 0;
+  return Math.min(100, Math.max(0, Math.round(next / 5) * 5));
+}
+
+function opacityForTransparency(percent) {
+  return 1 - (normalizeTransparency(percent) / 100) * 0.5;
+}
+
+function applyTransparency(percent) {
+  const transparency = normalizeTransparency(percent);
+  if (win && process.platform === 'win32') win.setOpacity(opacityForTransparency(transparency));
+  return transparency;
+}
+
 ipcMain.handle('window:state', () => ({
   pinned: win ? win.isAlwaysOnTop() : true,
   preview,
   form: formPreview ? 'claude' : '',
   theme: store.getSettings().theme || 'ion',
   refreshMinutes: normalizeRefresh(store.getSettings().refreshMinutes),
+  transparency: normalizeTransparency(store.getSettings().transparency),
   platform: process.platform,
 }));
 
@@ -335,6 +378,12 @@ ipcMain.handle('window:theme', (_event, theme) => {
   const next = ['ion', 'ember', 'void'].includes(theme) ? theme : 'ion';
   if (!preview) store.updateSettings({ theme: next });
   return next;
+});
+
+ipcMain.handle('window:transparency', (_event, percent) => {
+  const next = normalizeTransparency(percent);
+  if (!preview) store.updateSettings({ transparency: next });
+  return applyTransparency(next);
 });
 
 ipcMain.handle('window:pin', (_event, pinned) => {
@@ -370,6 +419,79 @@ ipcMain.handle('window:compact', (_event, payload) => {
 
 ipcMain.handle('window:hide', () => {
   hideWindow();
+  return true;
+});
+
+function playSiren() {
+  try {
+    const file = path.join(os.tmpdir(), 'usage-monitor-reset.wav');
+    fs.writeFileSync(file, sirenWav());
+    if (darwin) {
+      spawn('afplay', [file], { detached: true, stdio: 'ignore' }).unref();
+      return;
+    }
+    if (windows) {
+      const safe = file.replace(/'/g, "''");
+      spawn('powershell', ['-NoProfile', '-Command', `(New-Object Media.SoundPlayer '${safe}').PlaySync()`], {
+        detached: true,
+        stdio: 'ignore',
+      }).unref();
+    }
+  } catch {
+    // The picture and the alert still land if this computer has no speaker.
+  }
+}
+
+function growForAlarm() {
+  if (!win || win.isDestroyed()) return;
+  const bounds = win.getBounds();
+  if (bounds.height >= 500 && bounds.width >= 300) return;
+  alarmRestore = { ...bounds, compact };
+  suppressBounds = true;
+  win.setMinimumSize(280, 240);
+  win.setSize(Math.max(bounds.width, 304), Math.max(bounds.height, 520), false);
+}
+
+function restoreAfterAlarm() {
+  if (!win || win.isDestroyed()) {
+    alarmRestore = null;
+    suppressBounds = false;
+    return;
+  }
+  const restore = alarmRestore;
+  alarmRestore = null;
+  suppressBounds = false;
+  if (!restore) return;
+  if (restore.compact) {
+    compact = true;
+    win.setMinimumSize(280, 88);
+  }
+  win.setBounds({ x: restore.x, y: restore.y, width: restore.width, height: restore.height });
+}
+
+function presentResetAlarm(events, options = {}) {
+  if (!events.length) return;
+  const described = describeResets(events);
+  showWindow();
+  growForAlarm();
+  playSiren();
+  if (win && !win.isDestroyed()) win.webContents.send('usage:reset-alarm', described);
+  if (options.dialog === false) return;
+  const alertOptions = {
+    type: 'info',
+    buttons: ['Woo'],
+    defaultId: 0,
+    title: 'Usage reset',
+    message: described.headline,
+    detail: described.lines.join('\n\n'),
+  };
+  const parent = win && !win.isDestroyed() ? win : null;
+  const shown = parent ? dialog.showMessageBox(parent, alertOptions) : dialog.showMessageBox(alertOptions);
+  shown.catch(() => {});
+}
+
+ipcMain.handle('window:alarm-done', () => {
+  restoreAfterAlarm();
   return true;
 });
 

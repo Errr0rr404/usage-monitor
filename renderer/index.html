@@ -44,6 +44,9 @@
     </div>
     <button type="button" id="pin" role="menuitemcheckbox" aria-pressed="true">Keep on top</button>
     <p class="menu-note" id="pin-note">Stays above other windows, on every desktop.</p>
+    <p class="menu-label" id="opacity-label">Transparency</p>
+    <input id="opacity" type="range" min="0" max="100" step="5" value="0" aria-labelledby="opacity-label" aria-valuemin="0" aria-valuemax="100" aria-valuetext="Solid">
+    <p class="menu-note" id="opacity-note">Solid. Drag right to see through the window.</p>
   </div>
 
     <div id="board" aria-live="polite"></div>
@@ -85,6 +88,14 @@
       <button type="button" id="cancel">Cancel</button>
       <button type="button" id="save">Sign in</button>
     </footer>
+
+    <div id="reset-alarm" hidden role="alertdialog" aria-modal="true" aria-labelledby="reset-alarm-title">
+      <div class="siren" aria-hidden="true"><span></span><span></span></div>
+      <p class="alarm-kicker">whoop whoop</p>
+      <h2 id="reset-alarm-title">The bucket flipped</h2>
+      <div id="reset-alarm-lines"></div>
+      <button type="button" id="reset-alarm-dismiss">I'm awake</button>
+    </div>
   </main>
   <script src="app.js"></script>
 </body>

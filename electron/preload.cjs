@@ -14,8 +14,10 @@ contextBridge.exposeInMainWorld('desk', {
   setTheme: (theme) => ipcRenderer.invoke('window:theme', theme),
   setRefresh: (minutes) => ipcRenderer.invoke('window:refresh', minutes),
   setPinned: (pinned) => ipcRenderer.invoke('window:pin', pinned),
+  setTransparency: (percent) => ipcRenderer.invoke('window:transparency', percent),
   setCompact: (payload) => ipcRenderer.invoke('window:compact', payload),
   hide: () => ipcRenderer.invoke('window:hide'),
+  alarmDone: () => ipcRenderer.invoke('window:alarm-done'),
   onAuthHint: (callback) => {
     const listener = (_event, hint) => callback(hint);
     ipcRenderer.on('auth:hint', listener);
@@ -25,5 +27,10 @@ contextBridge.exposeInMainWorld('desk', {
     const listener = () => callback();
     ipcRenderer.on('usage:refresh-request', listener);
     return () => ipcRenderer.removeListener('usage:refresh-request', listener);
+  },
+  onResetAlarm: (callback) => {
+    const listener = (_event, payload) => callback(payload);
+    ipcRenderer.on('usage:reset-alarm', listener);
+    return () => ipcRenderer.removeListener('usage:reset-alarm', listener);
   },
 });

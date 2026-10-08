@@ -95,6 +95,7 @@ input:focus-visible {
   background:
     radial-gradient(120% 80% at 100% 0%, color-mix(in srgb, var(--accent) 12%, transparent), transparent 42%),
     var(--ground);
+  opacity: var(--panel-alpha, 1);
   border: 1px solid var(--line);
   border-radius: 10px;
   padding: 8px 8px 7px;
@@ -482,6 +483,16 @@ input {
   padding: 5px 7px;
 }
 
+#opacity {
+  width: calc(100% - 12px);
+  margin: 0 6px 2px;
+  padding: 0;
+  height: 16px;
+  background: transparent;
+  border: 0;
+  accent-color: var(--accent);
+}
+
 #help {
   margin: 8px 0 0;
   color: var(--quiet);
@@ -523,6 +534,122 @@ button:disabled {
   cursor: default;
 }
 
+#reset-alarm {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 18px 16px 16px;
+  text-align: center;
+  overflow: hidden;
+  background:
+    radial-gradient(90% 46% at 50% 0%, rgba(255, 90, 90, 0.55), transparent 62%),
+    radial-gradient(80% 40% at 50% 100%, color-mix(in srgb, var(--accent) 28%, transparent), transparent 58%),
+    var(--ground);
+  -webkit-app-region: no-drag;
+}
+
+#reset-alarm::before {
+  content: "";
+  position: absolute;
+  inset: -20% 0 auto;
+  height: 140%;
+  pointer-events: none;
+  background-image:
+    radial-gradient(circle, #ffb15a 1.6px, transparent 2.2px),
+    radial-gradient(circle, var(--accent) 1.6px, transparent 2.2px),
+    radial-gradient(circle, #ff6b6b 1.6px, transparent 2.2px);
+  background-size: 46px 62px, 68px 78px, 34px 50px;
+  background-position: 0 0, 14px 18px, 22px 8px;
+  animation: confetti 2.2s linear infinite;
+  opacity: 0.75;
+}
+
+.siren {
+  position: relative;
+  display: flex;
+  gap: 14px;
+}
+
+.siren span {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #ff4d4d;
+  box-shadow: 0 0 16px #ff4d4d;
+  animation: siren 0.42s steps(2, end) infinite;
+}
+
+.siren span:last-child {
+  background: var(--accent);
+  box-shadow: 0 0 16px var(--accent);
+  animation-delay: 0.21s;
+}
+
+.alarm-kicker {
+  position: relative;
+  margin: 2px 0 0;
+  color: var(--accent);
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 10px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+}
+
+#reset-alarm h2 {
+  position: relative;
+  margin: 0;
+  max-width: 16ch;
+  font-size: 22px;
+  line-height: 0.95;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  animation: alarm-bounce 0.46s ease-in-out infinite alternate;
+}
+
+#reset-alarm-lines {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-width: 28ch;
+}
+
+#reset-alarm-lines p {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+#reset-alarm-dismiss {
+  position: relative;
+  margin-top: 6px;
+  padding: 6px 12px;
+  color: var(--ground);
+  background: var(--accent);
+  border-radius: 99px;
+}
+
+@keyframes siren {
+  50% { opacity: 0.2; transform: scale(0.72); }
+}
+
+@keyframes alarm-bounce {
+  from { transform: translateY(0) rotate(-2deg); }
+  to { transform: translateY(-5px) rotate(2deg); }
+}
+
+@keyframes confetti {
+  to { background-position: 0 62px, 14px 96px, 22px 58px; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .gauge .value { filter: none; }
+  #reset-alarm::before,
+  .siren span,
+  #reset-alarm h2 { animation: none; }
 }

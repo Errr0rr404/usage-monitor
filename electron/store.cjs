@@ -14,6 +14,7 @@ function emptyState() {
     settings: { pinned: true, bounds: null, defaultAccountId: null },
     accounts: [],
     meters: {},
+    resetMarks: {},
   };
 }
 
@@ -25,6 +26,7 @@ function readState() {
       settings: { pinned: true, bounds: null, defaultAccountId: null, ...(parsed.settings || {}) },
       accounts: Array.isArray(parsed.accounts) ? parsed.accounts : [],
       meters: parsed.meters && typeof parsed.meters === 'object' ? parsed.meters : {},
+      resetMarks: parsed.resetMarks && typeof parsed.resetMarks === 'object' ? parsed.resetMarks : {},
     };
   } catch {
     return emptyState();
@@ -147,9 +149,23 @@ function removeAccount(id) {
   const state = readState();
   state.accounts = state.accounts.filter((account) => account.id !== id);
   if (state.meters) delete state.meters[id];
+  if (state.resetMarks) delete state.resetMarks[id];
   state.settings.defaultAccountId = resolveDefaultId(state.accounts, state.settings.defaultAccountId === id ? null : state.settings.defaultAccountId);
   writeState(state);
   return listPublic();
+}
+
+function getResetMarks() {
+  const marks = readState().resetMarks;
+  return marks && typeof marks === 'object' ? marks : {};
+}
+
+function setResetMarks(marks) {
+  const state = readState();
+  const next = marks && typeof marks === 'object' ? marks : {};
+  if (JSON.stringify(state.resetMarks || {}) === JSON.stringify(next)) return;
+  state.resetMarks = next;
+  writeState(state);
 }
 
 function getMeter(id) {
@@ -192,5 +208,7 @@ module.exports = {
   removeAccount,
   eachSecret,
   getMeter,
+  getResetMarks,
+  setResetMarks,
   setMeter,
 };

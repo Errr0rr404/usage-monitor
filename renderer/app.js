@@ -59,6 +59,7 @@ const state = {
   hint: '',
   deviceCode: '',
   theme: 'ion',
+  transparency: 0,
   menuOpen: false,
   platform: 'darwin',
   refreshMinutes: 5,
@@ -74,6 +75,7 @@ const deviceCode = document.getElementById('device-code');
 const formError = document.getElementById('form-error');
 const regionField = document.getElementById('region-field');
 const pinButton = document.getElementById('pin');
+const opacityInput = document.getElementById('opacity');
 const compactButton = document.getElementById('compact');
 const refreshButton = document.getElementById('refresh');
 const saveButton = document.getElementById('save');
@@ -362,6 +364,10 @@ function renderChrome() {
     button.setAttribute('aria-pressed', Number(button.dataset.refresh) === state.refreshMinutes ? 'true' : 'false');
   });
   document.documentElement.dataset.theme = state.theme;
+  paintTransparency(state.transparency);
+  if (document.activeElement !== opacityInput) opacityInput.value = String(state.transparency);
+  opacityInput.setAttribute('aria-valuetext', transparencyLabel(state.transparency));
+  document.getElementById('opacity-note').textContent = transparencyNote(state.transparency);
   document.querySelectorAll('[data-region]').forEach((button) => {
     button.setAttribute('aria-pressed', button.dataset.region === state.region ? 'true' : 'false');
   });
@@ -464,6 +470,33 @@ document.addEventListener('click', (event) => {
   if (menu.contains(event.target) || settingsButton.contains(event.target)) return;
   state.menuOpen = false;
   renderChrome();
+});
+
+function transparencyLabel(percent) {
+  return percent ? `${percent}% clear` : 'Solid';
+}
+
+function transparencyNote(percent) {
+  return percent
+    ? `${transparencyLabel(percent)}. Drag right to see through more of the window.`
+    : 'Solid. Drag right to see through the window.';
+}
+
+function paintTransparency(percent) {
+  const opacity = state.platform === 'win32' ? 1 : 1 - (Number(percent) || 0) / 200;
+  document.documentElement.style.setProperty('--panel-alpha', String(opacity));
+}
+
+opacityInput.addEventListener('input', async () => {
+  const requested = Number(opacityInput.value);
+  paintTransparency(requested);
+  opacityInput.setAttribute('aria-valuetext', transparencyLabel(requested));
+  document.getElementById('opacity-note').textContent = transparencyNote(requested);
+  state.transparency = await desk.setTransparency(requested);
+  if (document.activeElement !== opacityInput) opacityInput.value = String(state.transparency);
+  paintTransparency(state.transparency);
+  opacityInput.setAttribute('aria-valuetext', transparencyLabel(state.transparency));
+  document.getElementById('opacity-note').textContent = transparencyNote(state.transparency);
 });
 
 document.getElementById('pin').addEventListener('click', async () => {
@@ -596,6 +629,10 @@ document.getElementById('save').addEventListener('click', async () => {
 });
 
 document.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape' && !document.getElementById('reset-alarm').hidden) {
+    dismissResetAlarm();
+    return;
+  }
   if (event.key === 'Escape' && state.menuOpen) {
     state.menuOpen = false;
     renderChrome();
@@ -633,6 +670,30 @@ desk.onAuthHint((hint) => {
 
 desk.onRefreshRequest(() => refresh());
 
+function showResetAlarm(payload) {
+  const alarm = document.getElementById('reset-alarm');
+  document.getElementById('reset-alarm-title').textContent = payload?.headline || 'A meter just reset';
+  const lines = document.getElementById('reset-alarm-lines');
+  lines.replaceChildren();
+  for (const line of payload?.lines || []) {
+    const paragraph = document.createElement('p');
+    paragraph.textContent = line;
+    lines.appendChild(paragraph);
+  }
+  alarm.hidden = false;
+  document.getElementById('reset-alarm-dismiss').focus();
+}
+
+function dismissResetAlarm() {
+  const alarm = document.getElementById('reset-alarm');
+  if (alarm.hidden) return;
+  alarm.hidden = true;
+  desk.alarmDone();
+}
+
+desk.onResetAlarm(showResetAlarm);
+document.getElementById('reset-alarm-dismiss').addEventListener('click', dismissResetAlarm);
+
 async function init() {
   const query = new URLSearchParams(location.search);
   if (query.get('menu') === '1') state.menuOpen = true;
@@ -641,6 +702,7 @@ async function init() {
   state.pinned = windowState.pinned !== false;
   state.theme = windowState.theme || 'ion';
   state.platform = windowState.platform || 'darwin';
+  state.transparency = Number.isFinite(windowState.transparency) ? windowState.transparency : 0;
   state.refreshMinutes = Number.isFinite(windowState.refreshMinutes) ? windowState.refreshMinutes : 5;
   document.documentElement.dataset.theme = state.theme;
   document.documentElement.dataset.platform = state.platform;
