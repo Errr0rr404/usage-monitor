@@ -114,15 +114,22 @@ function titlePlan(plan) {
 }
 
 // The name a person gave a login is what tells two accounts of the same service
-// apart, so it rides along after the plan. Drop it when it only echoes the group
-// heading or the plan, which keeps single-account services quiet.
-function accountTag(account, plan) {
+// apart, so it rides along after the plan. A label that only repeats the
+// service is not a name: use the email the service reported. Drop a tag that
+// only echoes the group heading or the plan.
+function accountTag(account, plan, identity) {
   const label = String(account.label || '').trim();
-  if (!label) return '';
-  const lower = label.toLowerCase();
-  if (lower === providerName(account.provider).toLowerCase()) return '';
+  const who = String(identity || '').trim();
+  const provider = providerName(account.provider).toLowerCase();
+  const generic = !label
+    || label.toLowerCase() === provider
+    || label.toLowerCase() === String(account.provider || '').toLowerCase();
+  const shown = generic && who ? who : label;
+  if (!shown) return '';
+  const lower = shown.toLowerCase();
+  if (lower === provider || lower === String(account.provider || '').toLowerCase()) return '';
   if (plan && lower === String(plan).toLowerCase()) return '';
-  return label;
+  return shown;
 }
 
 function formatCount(value) {
@@ -250,7 +257,7 @@ function renderMeter(window) {
 function renderAccount(account) {
   const snapshot = state.snapshots[account.id];
   const plan = titlePlan(snapshot?.plan);
-  const name = accountTag(account, plan);
+  const name = accountTag(account, plan, snapshot?.ok ? snapshot.identity : null);
   const confirming = state.pendingRemove === account.id;
   const canChooseDefault = state.accounts.length > 1;
   const defaultLabel = account.isDefault ? 'Default' : 'Set default';
@@ -310,7 +317,7 @@ function renderBoard() {
           reading = `${window.label} ${view.value}${view.unit ? ` ${view.unit}` : ''}`;
         }
       }
-      const name = accountTag(account, titlePlan(snapshot?.ok ? snapshot.plan : null));
+      const name = accountTag(account, titlePlan(snapshot?.ok ? snapshot.plan : null), snapshot?.ok ? snapshot.identity : null);
       const full = [providerName(account.provider), name].filter(Boolean).join(' · ');
       return `<div class="compact-row"><strong title="${esc(full)}">${esc(providerName(account.provider))}${name ? ` <span class="plan">${esc(name)}</span>` : ''}</strong><span>${esc(reading)}</span></div>`;
     }).join('');
