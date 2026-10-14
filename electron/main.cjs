@@ -105,7 +105,11 @@ function persistBounds() {
     normalBounds = { ...normalBounds, x, y };
   }
   const bounds = normalBounds || win.getBounds();
-  store.updateSettings({ bounds, pinned });
+  try {
+    store.updateSettings({ bounds, pinned });
+  } catch {
+    // A bad read must not replace the saved accounts.
+  }
 }
 
 function showWindow() {
@@ -285,7 +289,11 @@ async function refreshAll() {
       accounts: result.accounts,
       snapshots,
     });
-    store.setResetMarks(found.marks);
+    try {
+      store.setResetMarks(found.marks);
+    } catch {
+      // Leave the saved deadlines alone when the account file could not be read.
+    }
     if (found.events.length) presentResetAlarm(found.events);
     return result;
   })().finally(() => {

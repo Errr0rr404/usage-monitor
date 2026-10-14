@@ -4,36 +4,69 @@ const crypto = require('crypto');
 const { app, safeStorage } = require('electron');
 const { sessionFromSecret } = require('../lib/oauth.cjs');
 const { resolveDefaultId } = require('../lib/tray.cjs');
+const { emptyAccountState, parseAccountFile, legacyAccountFiles } = require('../lib/account-file.cjs');
 
 function dataFile() {
   return path.join(app.getPath('userData'), 'accounts.json');
 }
 
 function emptyState() {
-  return {
-    settings: { pinned: true, bounds: null, defaultAccountId: null },
-    accounts: [],
-    meters: {},
-    resetMarks: {},
-  };
+  return emptyAccountState();
 }
 
-function readState() {
+// A failed read must not become permission to replace the file with an empty store.
+let canPersist = true;
+
+function sameFile(left, right) {
   try {
-    const raw = fs.readFileSync(dataFile(), 'utf8');
-    const parsed = JSON.parse(raw);
-    return {
-      settings: { pinned: true, bounds: null, defaultAccountId: null, ...(parsed.settings || {}) },
-      accounts: Array.isArray(parsed.accounts) ? parsed.accounts : [],
-      meters: parsed.meters && typeof parsed.meters === 'object' ? parsed.meters : {},
-      resetMarks: parsed.resetMarks && typeof parsed.resetMarks === 'object' ? parsed.resetMarks : {},
-    };
+    return fs.realpathSync(left) === fs.realpathSync(right);
   } catch {
-    return emptyState();
+    return path.resolve(left) === path.resolve(right);
   }
 }
 
+function adoptLegacyAccounts() {
+  const file = dataFile();
+  if (fs.existsSync(file)) return;
+  let candidates = [];
+  try {
+    candidates = legacyAccountFiles(app.getPath('home'), process.platform, app.getPath('appData'));
+  } catch {
+    return;
+  }
+  for (const candidate of candidates) {
+    if (sameFile(candidate, file) || !fs.existsSync(candidate)) continue;
+    try {
+      const loaded = parseAccountFile(fs.readFileSync(candidate, 'utf8'));
+      if (!loaded.ok || !loaded.state.accounts.length) continue;
+      fs.mkdirSync(path.dirname(file), { recursive: true });
+      fs.copyFileSync(candidate, file);
+      return;
+    } catch {
+      // Try the next saved location. The original file stays where it is.
+    }
+  }
+}
+
+function readState() {
+  adoptLegacyAccounts();
+  const file = dataFile();
+  let raw;
+  try {
+    raw = fs.readFileSync(file, 'utf8');
+  } catch (error) {
+    canPersist = !error || error.code === 'ENOENT';
+    return emptyState();
+  }
+  const loaded = parseAccountFile(raw);
+  canPersist = loaded.ok;
+  return loaded.state;
+}
+
 function writeState(state) {
+  if (!canPersist) {
+    throw new Error('Saved accounts could not be read, so they were left unchanged.');
+  }
   const file = dataFile();
   fs.mkdirSync(path.dirname(file), { recursive: true });
   const next = `${JSON.stringify(state, null, 2)}\n`;
