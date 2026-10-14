@@ -13,11 +13,12 @@ contextBridge.exposeInMainWorld('desk', {
   chooseAuthFile: (provider) => ipcRenderer.invoke('auth:choose', provider),
   setTheme: (theme) => ipcRenderer.invoke('window:theme', theme),
   setRefresh: (minutes) => ipcRenderer.invoke('window:refresh', minutes),
+  setAlarmSound: (enabled) => ipcRenderer.invoke('window:alarm-sound', enabled),
+  testAlarm: () => ipcRenderer.invoke('window:test-alarm'),
   setPinned: (pinned) => ipcRenderer.invoke('window:pin', pinned),
   setTransparency: (percent) => ipcRenderer.invoke('window:transparency', percent),
   setCompact: (payload) => ipcRenderer.invoke('window:compact', payload),
   hide: () => ipcRenderer.invoke('window:hide'),
-  alarmDone: () => ipcRenderer.invoke('window:alarm-done'),
   onAuthHint: (callback) => {
     const listener = (_event, hint) => callback(hint);
     ipcRenderer.on('auth:hint', listener);

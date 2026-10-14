@@ -19,7 +19,7 @@ Usage Monitor refreshes every 5 minutes. Change that, or turn it off, from the s
 
 If a usage window drops under 15 percent, Usage Monitor sends one notification. It does not ping again until that window recovers and drops again.
 
-When a 5-hour, weekly, or monthly window resets, Usage Monitor brings the window forward, plays a short siren, and shows a joke with an alert. The first check after an update only records the current deadlines.
+When a 5-hour, weekly, or monthly window resets, Usage Monitor shows a compact notice above the gauges and plays a soft chime. The notice groups the windows by account and stays until you dismiss it with the close button or Escape. A hidden window reappears without taking keyboard focus. Turn the chime off with Reset sound in settings, or use Test reset notice to try it. Compact mode temporarily expands for notices, settings, and sign-in, then returns to its previous size. The first check after an update only records the current deadlines.
 
 ## Sign in
 
@@ -58,7 +58,7 @@ npm run dist:mac
 npm run dist:win
 ```
 
-`dist:mac` builds Apple silicon and Intel, then notarizes the disk images. It needs `APPLE_API_KEY` (path to the App Store Connect `.p8` key), `APPLE_API_KEY_ID`, and `APPLE_API_ISSUER`, and a Developer ID Application certificate in the keychain. `dist:win` builds 64-bit and 32-bit installers. A tag named `v*` runs both on GitHub Actions and attaches the files to that release.
+`dist:mac` builds Apple silicon and Intel, then notarizes the disk images. It needs `APPLE_API_KEY` (path to the App Store Connect `.p8` key), `APPLE_API_KEY_ID`, and `APPLE_API_ISSUER`, and a Developer ID Application certificate in the keychain. `dist:win` builds 64-bit and 32-bit installers.
 
 ## License
 

@@ -7,7 +7,7 @@ const store = require('./store.cjs');
 const { fetchUsage } = require('../lib/fetch.cjs');
 const { cleanSecret, extractCodexAuth, extractGrokAuth } = require('../lib/parse.cjs');
 const { previewState } = require('../lib/preview.cjs');
-const { collectResets, describeResets, sirenWav } = require('../lib/reset-alarm.cjs');
+const { collectResets, describeResets, resetChimeWav } = require('../lib/reset-alarm.cjs');
 const { trayPng } = require('../lib/tray-icon.cjs');
 const { remainingLeft, trayDisplay, providerName } = require('../lib/tray.cjs');
 const { signIn, cancelSignIn } = require('./browser-login.cjs');
@@ -30,8 +30,9 @@ let normalBounds = null;
 let compact = false;
 let refreshing = null;
 let lastResult = null;
-let suppressBounds = false;
-let alarmRestore = null;
+let signInAttempt = 0;
+let alarmSound = true;
+let pinned = true;
 const limitState = new Map();
 
 function pruneLimitState(accountId) {
@@ -98,9 +99,13 @@ if (!gotLock) {
 }
 
 function persistBounds() {
-  if (!win || preview || suppressBounds) return;
+  if (!win || preview) return;
+  if (compact && normalBounds) {
+    const { x, y } = win.getBounds();
+    normalBounds = { ...normalBounds, x, y };
+  }
   const bounds = normalBounds || win.getBounds();
-  store.updateSettings({ bounds, pinned: win.isAlwaysOnTop() });
+  store.updateSettings({ bounds, pinned });
 }
 
 function showWindow() {
@@ -147,6 +152,8 @@ function createTray() {
 
 function createWindow() {
   const settings = preview ? { pinned: true, bounds: null } : store.getSettings();
+  alarmSound = settings.alarmSound !== false;
+  pinned = settings.pinned !== false;
   const shot = process.argv.includes('--shot');
   const saved = settings.bounds || {};
   const width = saved.width || 304;
@@ -166,7 +173,7 @@ function createWindow() {
     maximizable: false,
     fullscreenable: false,
     skipTaskbar: darwin,
-    alwaysOnTop: settings.pinned !== false,
+    alwaysOnTop: pinned,
     hasShadow: true,
     roundedCorners: true,
     title: 'Usage Monitor',
@@ -180,7 +187,7 @@ function createWindow() {
     },
   });
 
-  if (settings.pinned !== false) pinWindow(win, true);
+  if (pinned) pinWindow(win, true);
   applyTransparency(settings.transparency);
 
   const query = {};
@@ -352,11 +359,12 @@ function applyTransparency(percent) {
 }
 
 ipcMain.handle('window:state', () => ({
-  pinned: win ? win.isAlwaysOnTop() : true,
+  pinned,
   preview,
   form: formPreview ? 'claude' : '',
   theme: store.getSettings().theme || 'ion',
   refreshMinutes: normalizeRefresh(store.getSettings().refreshMinutes),
+  alarmSound,
   transparency: normalizeTransparency(store.getSettings().transparency),
   platform: process.platform,
 }));
@@ -374,6 +382,20 @@ ipcMain.handle('window:refresh', (_event, minutes) => {
   return next;
 });
 
+ipcMain.handle('window:alarm-sound', (_event, enabled) => {
+  const next = Boolean(enabled);
+  if (!preview) store.updateSettings({ alarmSound: next });
+  alarmSound = next;
+  return next;
+});
+
+ipcMain.handle('window:test-alarm', () => {
+  presentResetAlarm([
+    { accountId: 'example', provider: 'codex', accountLabel: 'Example', windowLabel: '5 hours' },
+  ]);
+  return true;
+});
+
 ipcMain.handle('window:theme', (_event, theme) => {
   const next = ['ion', 'ember', 'void'].includes(theme) ? theme : 'ion';
   if (!preview) store.updateSettings({ theme: next });
@@ -386,10 +408,11 @@ ipcMain.handle('window:transparency', (_event, percent) => {
   return applyTransparency(next);
 });
 
-ipcMain.handle('window:pin', (_event, pinned) => {
+ipcMain.handle('window:pin', (_event, enabled) => {
   if (!win) return false;
-  const next = Boolean(pinned);
+  const next = Boolean(enabled);
   pinWindow(win, next);
+  pinned = next;
   if (!preview) store.updateSettings({ pinned: next });
   return next;
 });
@@ -422,78 +445,36 @@ ipcMain.handle('window:hide', () => {
   return true;
 });
 
-function playSiren() {
+function playResetChime() {
   try {
-    const file = path.join(os.tmpdir(), 'usage-monitor-reset.wav');
-    fs.writeFileSync(file, sirenWav());
+    const file = path.join(os.tmpdir(), 'usage-monitor-reset-chime.wav');
+    fs.writeFileSync(file, resetChimeWav());
+    let player;
     if (darwin) {
-      spawn('afplay', [file], { detached: true, stdio: 'ignore' }).unref();
-      return;
-    }
-    if (windows) {
+      player = spawn('afplay', [file], { detached: true, stdio: 'ignore' });
+    } else if (windows) {
       const safe = file.replace(/'/g, "''");
-      spawn('powershell', ['-NoProfile', '-Command', `(New-Object Media.SoundPlayer '${safe}').PlaySync()`], {
+      player = spawn('powershell', ['-NoProfile', '-Command', `(New-Object Media.SoundPlayer '${safe}').PlaySync()`], {
         detached: true,
         stdio: 'ignore',
-      }).unref();
+      });
+    }
+    if (player) {
+      player.on('error', () => {});
+      player.unref();
     }
   } catch {
-    // The picture and the alert still land if this computer has no speaker.
+    // The notice still appears if sound is unavailable.
   }
 }
 
-function growForAlarm() {
-  if (!win || win.isDestroyed()) return;
-  const bounds = win.getBounds();
-  if (bounds.height >= 500 && bounds.width >= 300) return;
-  alarmRestore = { ...bounds, compact };
-  suppressBounds = true;
-  win.setMinimumSize(280, 240);
-  win.setSize(Math.max(bounds.width, 304), Math.max(bounds.height, 520), false);
-}
-
-function restoreAfterAlarm() {
-  if (!win || win.isDestroyed()) {
-    alarmRestore = null;
-    suppressBounds = false;
-    return;
-  }
-  const restore = alarmRestore;
-  alarmRestore = null;
-  suppressBounds = false;
-  if (!restore) return;
-  if (restore.compact) {
-    compact = true;
-    win.setMinimumSize(280, 88);
-  }
-  win.setBounds({ x: restore.x, y: restore.y, width: restore.width, height: restore.height });
-}
-
-function presentResetAlarm(events, options = {}) {
-  if (!events.length) return;
+function presentResetAlarm(events) {
+  if (!events.length || !win || win.isDestroyed()) return;
   const described = describeResets(events);
-  showWindow();
-  growForAlarm();
-  playSiren();
-  if (win && !win.isDestroyed()) win.webContents.send('usage:reset-alarm', described);
-  if (options.dialog === false) return;
-  const alertOptions = {
-    type: 'info',
-    buttons: ['Woo'],
-    defaultId: 0,
-    title: 'Usage reset',
-    message: described.headline,
-    detail: described.lines.join('\n\n'),
-  };
-  const parent = win && !win.isDestroyed() ? win : null;
-  const shown = parent ? dialog.showMessageBox(parent, alertOptions) : dialog.showMessageBox(alertOptions);
-  shown.catch(() => {});
+  if (!win.isVisible()) win.showInactive();
+  if (alarmSound) playResetChime();
+  win.webContents.send('usage:reset-alarm', described);
 }
-
-ipcMain.handle('window:alarm-done', () => {
-  restoreAfterAlarm();
-  return true;
-});
 
 ipcMain.handle('usage:refresh', () => refreshAll());
 
@@ -501,7 +482,7 @@ ipcMain.handle('auth:signin', async (_event, payload) => {
   if (preview) return { ok: false, error: 'Preview mode does not sign in.' };
   const provider = payload?.provider;
   if (!PROVIDERS.has(provider)) return { ok: false, error: 'Choose a service first.' };
-  const wasOnTop = win ? win.isAlwaysOnTop() : false;
+  const attempt = ++signInAttempt;
   if (win) win.setAlwaysOnTop(false);
   try {
     const result = await signIn(provider, {
@@ -514,7 +495,7 @@ ipcMain.handle('auth:signin', async (_event, payload) => {
         if (win && !win.isDestroyed()) win.webContents.send('auth:hint', hint);
       },
     });
-    if (result.canceled) return { ok: false, canceled: true };
+    if (result.canceled || attempt !== signInAttempt) return { ok: false, canceled: true };
     if (!result.ok || !result.secret) {
       return { ok: false, error: result.error || 'Sign-in did not finish.' };
     }
@@ -534,13 +515,17 @@ ipcMain.handle('auth:signin', async (_event, payload) => {
   } catch (error) {
     return { ok: false, error: error.message || 'Sign-in could not finish.' };
   } finally {
-    if (win && wasOnTop) pinWindow(win, true);
-    showWindow();
+    if (attempt === signInAttempt) {
+      pinWindow(win, pinned);
+      showWindow();
+    }
   }
 });
 
 ipcMain.handle('auth:cancel', () => {
+  signInAttempt += 1;
   cancelSignIn();
+  pinWindow(win, pinned);
   return true;
 });
 

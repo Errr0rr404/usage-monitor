@@ -63,6 +63,7 @@ const state = {
   menuOpen: false,
   platform: 'darwin',
   refreshMinutes: 5,
+  alarmSound: true,
 };
 
 const board = document.getElementById('board');
@@ -79,6 +80,11 @@ const opacityInput = document.getElementById('opacity');
 const compactButton = document.getElementById('compact');
 const refreshButton = document.getElementById('refresh');
 const saveButton = document.getElementById('save');
+const alarm = document.getElementById('reset-alarm');
+const alarmSoundButton = document.getElementById('alarm-sound');
+const resetAccounts = new Map();
+let signInRequest = 0;
+let sizeRequest = 0;
 
 function esc(value) {
   return String(value ?? '').replace(/[&<>"']/g, (char) => ({
@@ -147,7 +153,7 @@ function formatMoney(value) {
 }
 
 function phraseFromMs(ms) {
-  if (ms == null || Number.isNaN(ms)) return '';
+  if (!Number.isFinite(ms)) return '';
   if (ms <= 30000) return 'resets now';
   const mins = Math.round(ms / 60000);
   if (mins < 60) return `resets in ${mins}m`;
@@ -159,17 +165,24 @@ function phraseFromMs(ms) {
   return rest ? `resets in ${days}d ${rest}h` : `resets in ${days}d`;
 }
 
-function resetPhrase(window) {
+function resetDeadline(window, fetchedAt) {
   if (window.resetsAt) {
-    const ms = new Date(window.resetsAt).getTime() - Date.now();
-    if (!Number.isNaN(ms)) return phraseFromMs(ms);
+    const deadline = Date.parse(window.resetsAt);
+    if (Number.isFinite(deadline)) return deadline;
   }
-  if (window.resetsInMs) return phraseFromMs(Number(window.resetsInMs));
-  return '';
+  if (window.resetsInMs == null) return null;
+  const remaining = Number(window.resetsInMs);
+  const observed = Date.parse(fetchedAt);
+  return Number.isFinite(remaining) ? (Number.isFinite(observed) ? observed : Date.now()) + remaining : null;
 }
 
-function presentWindow(window) {
-  const reset = resetPhrase(window);
+function resetPhrase(window, fetchedAt) {
+  const deadline = resetDeadline(window, fetchedAt);
+  return deadline == null ? '' : phraseFromMs(deadline - Date.now());
+}
+
+function presentWindow(window, fetchedAt) {
+  const reset = resetPhrase(window, fetchedAt);
   if (window.unit === 'unlimited') {
     return { value: 'Unlimited', unit: '', note: reset, left: 100, tone: 'ok', bar: true };
   }
@@ -189,7 +202,7 @@ function presentWindow(window) {
     return {
       value: formatMoney(leftAmount),
       unit: 'left',
-      note: `of ${formatMoney(window.limit)}`,
+      note: [`of ${formatMoney(window.limit)}`, reset].filter(Boolean).join(', '),
       left,
       tone: toneFor(left),
       bar: true,
@@ -243,15 +256,27 @@ function gaugeMarkup(left, tone) {
   return `<svg class="gauge ${tone}" viewBox="0 0 36 36" aria-hidden="true"><circle class="track" cx="18" cy="18" r="${radius}"></circle><circle class="value" cx="18" cy="18" r="${radius}" stroke-dasharray="${drawn.toFixed(2)} ${circumference.toFixed(2)}"></circle></svg>`;
 }
 
-function renderMeter(window) {
-  const view = presentWindow(window);
+function renderMeter(window, fetchedAt) {
+  const view = presentWindow(window, fetchedAt);
   if (!view.bar) {
     return `<p class="meter-fallback">${esc(window.label)} ${esc(view.value)}${view.unit ? ` ${esc(view.unit)}` : ''}</p>`;
   }
   const percent = String(view.value).includes('%');
   const noteText = percent ? view.note : [view.value, view.unit, view.note].filter(Boolean).join(' ');
-  const note = noteText ? `<p class="meter-note">${esc(noteText)}</p>` : '';
-  return `<div class="dial-item"><div class="dial" role="meter" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(view.left)}" aria-label="${esc(window.label)}, ${esc(view.value)} ${esc(view.unit)}">${gaugeMarkup(view.left, view.tone)}<span class="dial-figure ${view.tone}">${Math.round(view.left)}</span></div><div class="dial-copy"><div class="meter-label">${esc(window.label)}</div>${note}</div></div>`;
+  const reset = resetPhrase(window, fetchedAt);
+  const countdown = reset && noteText.endsWith(reset)
+    ? ` data-countdown="${resetDeadline(window, fetchedAt)}" data-countdown-prefix="${esc(noteText.slice(0, -reset.length))}"`
+    : '';
+  const note = noteText ? `<p class="meter-note"${countdown}>${esc(noteText)}</p>` : '';
+  const figure = percent ? view.value.replace('%', '') : Math.round(view.left);
+  return `<div class="dial-item"><div class="dial" role="meter" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${view.left}" aria-label="${esc(window.label)}, ${esc(view.value)} ${esc(view.unit)}">${gaugeMarkup(view.left, view.tone)}<span class="dial-figure ${view.tone}">${esc(figure)}</span></div><div class="dial-copy"><div class="meter-label">${esc(window.label)}</div>${note}</div></div>`;
+}
+
+function updateCountdowns() {
+  document.querySelectorAll('[data-countdown]').forEach((note) => {
+    const text = note.dataset.countdownPrefix + phraseFromMs(Number(note.dataset.countdown) - Date.now());
+    if (note.textContent !== text) note.textContent = text;
+  });
 }
 
 function renderAccount(account) {
@@ -277,7 +302,7 @@ function renderAccount(account) {
   if (snapshot?.ok === false) body = `<p class="error">${esc(snapshot.error || 'Could not load usage.')}</p>`;
   else if (snapshot?.ok) {
     body = snapshot.windows.length
-      ? `<div class="dials">${snapshot.windows.map(renderMeter).join('')}</div>`
+      ? `<div class="dials">${snapshot.windows.map((window) => renderMeter(window, snapshot.fetchedAt)).join('')}</div>`
       : `<p class="meter-note">${esc(snapshot.note || 'No usage window came back.')}</p>`;
   } else if (!state.refreshing) body = '<p class="meter-note">Not checked yet.</p>';
 
@@ -304,11 +329,12 @@ function renderBoard() {
     return;
   }
 
+  const boardError = state.boardError ? `<p class="error" role="alert">${esc(state.boardError)}</p>` : '';
   if (state.compact) {
-    board.innerHTML = state.accounts.map((account) => {
+    board.innerHTML = boardError + state.accounts.map((account) => {
       const snapshot = state.snapshots[account.id];
       let reading = 'Checking…';
-      if (snapshot?.ok === false) reading = 'Needs a new login';
+      if (snapshot?.ok === false) reading = 'Could not load usage';
       else if (snapshot?.ok) {
         const window = tightest(snapshot.windows);
         if (!window) reading = snapshot.note ? 'Not reported' : 'No window';
@@ -319,7 +345,7 @@ function renderBoard() {
       }
       const name = accountTag(account, titlePlan(snapshot?.ok ? snapshot.plan : null), snapshot?.ok ? snapshot.identity : null);
       const full = [providerName(account.provider), name].filter(Boolean).join(' · ');
-      return `<div class="compact-row"><strong title="${esc(full)}">${esc(providerName(account.provider))}${name ? ` <span class="plan">${esc(name)}</span>` : ''}</strong><span>${esc(reading)}</span></div>`;
+      return `<div class="compact-row"><strong title="${esc(full)}">${esc(providerName(account.provider))}${name ? ` <span class="plan">${esc(name)}</span>` : ''}</strong><span title="${esc(snapshot?.error || reading)}">${esc(reading)}</span></div>`;
     }).join('');
     return;
   }
@@ -336,12 +362,13 @@ function renderBoard() {
       ${group.accounts.map(renderAccount).join('')}
     </section>
   `).join('');
-  const boardError = state.boardError ? `<p class="error">${esc(state.boardError)}</p>` : '';
   board.innerHTML = boardError + groupsHtml;
 }
 
 function renderChrome() {
-  pinButton.setAttribute('aria-pressed', state.pinned ? 'true' : 'false');
+  pinButton.setAttribute('aria-checked', state.pinned ? 'true' : 'false');
+  alarmSoundButton.setAttribute('aria-checked', state.alarmSound ? 'true' : 'false');
+  alarmSoundButton.querySelector('.menu-value').textContent = state.alarmSound ? 'On' : 'Off';
   document.getElementById('pin-note').textContent = state.platform === 'darwin'
     ? 'Stays above other windows, on every desktop.'
     : 'Stays above other windows.';
@@ -362,6 +389,7 @@ function renderChrome() {
   deviceCode.textContent = state.deviceCode;
   regionField.hidden = selected.id !== 'minimax';
   document.querySelectorAll('#provider-choices button').forEach((button) => {
+    button.disabled = state.saving;
     button.setAttribute('aria-pressed', button.dataset.provider === state.provider ? 'true' : 'false');
   });
   document.querySelectorAll('[data-theme]').forEach((button) => {
@@ -376,8 +404,10 @@ function renderChrome() {
   opacityInput.setAttribute('aria-valuetext', transparencyLabel(state.transparency));
   document.getElementById('opacity-note').textContent = transparencyNote(state.transparency);
   document.querySelectorAll('[data-region]').forEach((button) => {
+    button.disabled = state.saving;
     button.setAttribute('aria-pressed', button.dataset.region === state.region ? 'true' : 'false');
   });
+  document.getElementById('label').disabled = state.saving;
   formError.hidden = !state.formError;
   formError.textContent = state.formError;
 }
@@ -385,6 +415,7 @@ function renderChrome() {
 function render() {
   renderChrome();
   renderBoard();
+  syncCompactSize();
 }
 
 function openForm(provider) {
@@ -405,6 +436,13 @@ function closeForm() {
   state.hint = '';
   state.deviceCode = '';
   render();
+  settingsButton.focus();
+}
+
+function cancelForm() {
+  signInRequest += 1;
+  desk.cancelSignIn().catch(() => {});
+  closeForm();
 }
 
 async function refresh() {
@@ -421,7 +459,6 @@ async function refresh() {
   } finally {
     state.refreshing = false;
     render();
-    if (state.compact) syncCompactSize();
   }
 }
 
@@ -446,11 +483,20 @@ function measureCompactHeight() {
 }
 
 async function syncCompactSize() {
-  if (state.compact) {
+  const request = ++sizeRequest;
+  // Settings, sign-in, and reset notices need the regular window height.
+  // The compact board returns to its previous size when they close.
+  const compact = state.compact && !state.formOpen && !state.menuOpen && alarm.hidden;
+  if (compact) {
     await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
   }
-  const height = state.compact ? measureCompactHeight() : 0;
-  await desk.setCompact({ compact: state.compact, height });
+  if (request !== sizeRequest) return;
+  const height = compact ? measureCompactHeight() : 0;
+  try {
+    await desk.setCompact({ compact, height });
+  } catch {
+    // A closing window may no longer accept size changes.
+  }
 }
 
 menu.addEventListener('click', async (event) => {
@@ -470,6 +516,7 @@ menu.addEventListener('click', async (event) => {
 settingsButton.addEventListener('click', () => {
   state.menuOpen = !state.menuOpen;
   renderChrome();
+  syncCompactSize();
 });
 
 document.addEventListener('click', (event) => {
@@ -477,6 +524,7 @@ document.addEventListener('click', (event) => {
   if (menu.contains(event.target) || settingsButton.contains(event.target)) return;
   state.menuOpen = false;
   renderChrome();
+  syncCompactSize();
 });
 
 function transparencyLabel(percent) {
@@ -512,6 +560,17 @@ document.getElementById('pin').addEventListener('click', async () => {
   renderChrome();
 });
 
+alarmSoundButton.addEventListener('click', async () => {
+  state.alarmSound = await desk.setAlarmSound(!state.alarmSound);
+  renderChrome();
+});
+
+document.getElementById('test-alarm').addEventListener('click', () => {
+  state.menuOpen = false;
+  renderChrome();
+  desk.testAlarm();
+});
+
 document.getElementById('hide').addEventListener('click', () => desk.hide());
 
 document.getElementById('refresh').addEventListener('click', () => {
@@ -523,7 +582,6 @@ document.getElementById('compact').addEventListener('click', async () => {
   state.compact = !state.compact;
   state.menuOpen = false;
   render();
-  await syncCompactSize();
 });
 
 document.getElementById('add').addEventListener('click', () => {
@@ -583,6 +641,7 @@ board.addEventListener('click', async (event) => {
   if (state.pendingRemove !== id) {
     state.pendingRemove = id;
     renderBoard();
+    [...board.querySelectorAll('[data-remove]')].find((button) => button.dataset.remove === id)?.focus();
     return;
   }
   state.accounts = await desk.removeAccount(id);
@@ -596,24 +655,28 @@ form.addEventListener('submit', (event) => {
   document.getElementById('save').click();
 });
 
-document.getElementById('cancel').addEventListener('click', () => {
-  desk.cancelSignIn();
-  closeForm();
-});
+document.getElementById('cancel').addEventListener('click', cancelForm);
 
 document.getElementById('save').addEventListener('click', async () => {
   if (state.saving) return;
+  const request = ++signInRequest;
   const label = document.getElementById('label').value.trim();
   state.saving = true;
   state.formError = '';
   state.hint = 'Opening your browser…';
   state.deviceCode = '';
   renderChrome();
-  const result = await desk.signIn({
-    provider: state.provider,
-    label,
-    region: state.region,
-  });
+  let result;
+  try {
+    result = await desk.signIn({
+      provider: state.provider,
+      label,
+      region: state.region,
+    });
+  } catch {
+    result = { ok: false, error: 'Sign-in could not finish. Try again.' };
+  }
+  if (request !== signInRequest) return;
   state.saving = false;
   state.hint = '';
   state.deviceCode = '';
@@ -636,16 +699,21 @@ document.getElementById('save').addEventListener('click', async () => {
 });
 
 document.addEventListener('keydown', (event) => {
-  if (event.key === 'Escape' && !document.getElementById('reset-alarm').hidden) {
-    dismissResetAlarm();
-    return;
-  }
   if (event.key === 'Escape' && state.menuOpen) {
     state.menuOpen = false;
     renderChrome();
+    syncCompactSize();
+    settingsButton.focus();
     return;
   }
-  if (event.key === 'Escape' && state.formOpen) closeForm();
+  if (event.key === 'Escape' && state.formOpen) {
+    cancelForm();
+    return;
+  }
+  if (event.key === 'Escape' && !alarm.hidden) {
+    dismissResetAlarm();
+    return;
+  }
   if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'w') {
     event.preventDefault();
     desk.hide();
@@ -678,24 +746,47 @@ desk.onAuthHint((hint) => {
 desk.onRefreshRequest(() => refresh());
 
 function showResetAlarm(payload) {
-  const alarm = document.getElementById('reset-alarm');
-  document.getElementById('reset-alarm-title').textContent = payload?.headline || 'A meter just reset';
-  const lines = document.getElementById('reset-alarm-lines');
-  lines.replaceChildren();
-  for (const line of payload?.lines || []) {
-    const paragraph = document.createElement('p');
-    paragraph.textContent = line;
-    lines.appendChild(paragraph);
+  for (const account of payload?.accounts || []) {
+    const previous = resetAccounts.get(account.id);
+    resetAccounts.set(account.id, {
+      ...account,
+      windows: [...new Set([...(previous?.windows || []), ...(account.windows || [])])],
+    });
   }
+  if (!resetAccounts.size) return;
+  const accounts = document.getElementById('reset-alarm-accounts');
+  accounts.replaceChildren();
+  let count = 0;
+  for (const account of resetAccounts.values()) {
+    const row = document.createElement('div');
+    row.className = 'alarm-account';
+    const name = document.createElement('p');
+    name.className = 'alarm-account-name';
+    name.textContent = account.provider;
+    if (account.label) {
+      const label = document.createElement('span');
+      label.textContent = account.label;
+      name.appendChild(label);
+    }
+    const windows = document.createElement('p');
+    windows.className = 'alarm-windows';
+    windows.textContent = account.windows.join(' · ');
+    row.append(name, windows);
+    accounts.appendChild(row);
+    count += account.windows.length;
+  }
+  document.getElementById('reset-alarm-summary').textContent = count === 1 ? '1 window refreshed.' : `${count} windows refreshed.`;
   alarm.hidden = false;
-  document.getElementById('reset-alarm-dismiss').focus();
+  syncCompactSize();
 }
 
 function dismissResetAlarm() {
-  const alarm = document.getElementById('reset-alarm');
   if (alarm.hidden) return;
+  const hadFocus = alarm.contains(document.activeElement);
   alarm.hidden = true;
-  desk.alarmDone();
+  resetAccounts.clear();
+  syncCompactSize();
+  if (hadFocus) (state.formOpen ? document.getElementById('cancel') : settingsButton).focus();
 }
 
 desk.onResetAlarm(showResetAlarm);
@@ -711,12 +802,14 @@ async function init() {
   state.platform = windowState.platform || 'darwin';
   state.transparency = Number.isFinite(windowState.transparency) ? windowState.transparency : 0;
   state.refreshMinutes = Number.isFinite(windowState.refreshMinutes) ? windowState.refreshMinutes : 5;
+  state.alarmSound = windowState.alarmSound !== false;
   document.documentElement.dataset.theme = state.theme;
   document.documentElement.dataset.platform = state.platform;
   render();
   await refresh();
   if (windowState.form) openForm(windowState.form);
   scheduleRefresh();
+  setInterval(updateCountdowns, 30000);
 }
 
 init();

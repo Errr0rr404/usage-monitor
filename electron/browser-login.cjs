@@ -106,7 +106,7 @@ async function exchange(spec, { code, verifier, state }) {
   return json;
 }
 
-function signInLoopback(provider, onProgress) {
+function signInLoopback(provider, onProgress, session) {
   const spec = PROVIDERS[provider];
   const flow = pkce();
   const url = authorizeUrl(provider, flow);
@@ -118,7 +118,6 @@ function signInLoopback(provider, onProgress) {
       if (settled) return;
       settled = true;
       clearTimeout(timeout);
-      current = null;
       if (gateway) gateway.close();
       resolve(result);
     };
@@ -177,7 +176,7 @@ function signInLoopback(provider, onProgress) {
         });
     };
 
-    current = { finish };
+    session.finish = finish;
     openLoopback(spec, handler)
       .then((opened) => {
         if (settled) {
@@ -451,49 +450,34 @@ async function signInMuse(onProgress, session) {
   throw new Error('Sign-in took too long. Try again.');
 }
 
-function signIn(provider, options = {}) {
-  const onProgress = options.onProgress;
-  if (provider === 'minimax') {
-    const session = { canceled: false, finish: null };
-    current = session;
-    return signInDevice(options.region, onProgress, session)
-      .catch((error) => ({
-        ok: false,
-        error: error.message || 'Sign-in could not finish.',
-      }))
-      .finally(() => {
-        if (current === session) current = null;
-      });
+async function signIn(provider, options = {}) {
+  if (!PROVIDERS[provider]) {
+    return { ok: false, error: 'Choose a service first.' };
   }
-  if (provider === 'cursor' || provider === 'copilot' || provider === 'muse') {
-    const session = { canceled: false, finish: null };
-    current = session;
-    const run = provider === 'cursor'
-      ? signInCursor(onProgress, session)
-      : provider === 'copilot'
-        ? signInCopilot(onProgress, session)
-        : signInMuse(onProgress, session);
-    return run
-      .catch((error) => ({
-        ok: false,
-        error: error.message || 'Sign-in could not finish.',
-      }))
-      .finally(() => {
-        if (current === session) current = null;
-      });
+  cancelSignIn();
+  const session = { canceled: false, finish: null };
+  current = session;
+  const onProgress = (hint) => {
+    if (!session.canceled && current === session && options.onProgress) options.onProgress(hint);
+  };
+  try {
+    if (provider === 'gemini') await ensureGeminiClient();
+    if (session.canceled) return { ok: false, canceled: true };
+    let result;
+    if (provider === 'minimax') result = await signInDevice(options.region, onProgress, session);
+    else if (provider === 'cursor') result = await signInCursor(onProgress, session);
+    else if (provider === 'copilot') result = await signInCopilot(onProgress, session);
+    else if (provider === 'muse') result = await signInMuse(onProgress, session);
+    else result = await signInLoopback(provider, onProgress, session);
+    // A token response may arrive after Cancel, or after another sign-in began.
+    return session.canceled ? { ok: false, canceled: true } : result;
+  } catch (error) {
+    return session.canceled
+      ? { ok: false, canceled: true }
+      : { ok: false, error: error.message || 'Sign-in could not finish.' };
+  } finally {
+    if (current === session) current = null;
   }
-  if (!PROVIDERS[provider] || PROVIDERS[provider].mode !== 'loopback') {
-    return Promise.resolve({ ok: false, error: 'Choose a service first.' });
-  }
-  if (provider === 'gemini') {
-    return ensureGeminiClient()
-      .then(() => signInLoopback(provider, onProgress))
-      .catch((error) => ({
-        ok: false,
-        error: error.message || 'Gemini sign-in could not start.',
-      }));
-  }
-  return signInLoopback(provider, onProgress);
 }
 
 function cancelSignIn() {

@@ -2,6 +2,7 @@ const { execFileSync } = require('child_process');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
+const { version } = require('../package.json');
 
 const distDir = path.join(__dirname, '..', 'dist');
 
@@ -40,7 +41,7 @@ function runCapture(command, args) {
 function diskImages() {
   if (!fs.existsSync(distDir)) return [];
   return fs.readdirSync(distDir)
-    .filter((name) => name.endsWith('.dmg'))
+    .filter((name) => name.startsWith(`Usage-Monitor-${version}-mac-`) && name.endsWith('.dmg'))
     .map((name) => path.join(distDir, name));
 }
 
