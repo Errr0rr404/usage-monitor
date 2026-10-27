@@ -1,5 +1,7 @@
 # Usage Monitor
 
+[![HOL Guard](https://img.shields.io/endpoint?url=https%3A%2F%2Fhol.org%2Fapi%2Fregistry%2Fbadges%2Fplugin%3Fslug%3Derrr0rr404%252Fusage-monitor%26metric%3Drelease)](https://hol.org/registry/plugins/errr0rr404%2Fusage-monitor)
+
 A small floating desktop meter for Grok, MiniMax, Codex, Claude, Cursor, Copilot, Gemini, and Muse. Sign in with your usual browser. Usage Monitor reads what is left on each account and keeps the session on this computer.
 
 ![Usage Monitor with Grok, MiniMax, Codex, Cursor, Copilot, Gemini, and Muse](docs/screenshot.jpg)
