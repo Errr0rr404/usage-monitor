@@ -4,12 +4,13 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const store = require('./store.cjs');
-const { fetchUsage } = require('../lib/fetch.cjs');
-const { cleanSecret, extractCodexAuth, extractGrokAuth } = require('../lib/parse.cjs');
+const { fetchUsage, KEY_PROVIDERS } = require('../lib/fetch.cjs');
+const { cleanSecret, extractCodexAuth, extractGrokAuth, extractOpenCodeKey } = require('../lib/parse.cjs');
 const { previewState } = require('../lib/preview.cjs');
 const { collectResets, describeResets, resetChimeWav } = require('../lib/reset-alarm.cjs');
 const { trayPng } = require('../lib/tray-icon.cjs');
 const { remainingLeft, trayDisplay, providerName } = require('../lib/tray.cjs');
+const { normalizeLayout, finiteBox, openingSize, placeLayout } = require('../lib/layout.cjs');
 const { signIn, cancelSignIn } = require('./browser-login.cjs');
 
 const darwin = process.platform === 'darwin';
@@ -18,7 +19,37 @@ const windows = process.platform === 'win32';
 const preview = process.argv.includes('--preview') || process.argv.includes('--shot');
 const emptyPreview = process.argv.includes('--empty');
 const formPreview = process.argv.includes('--form');
-const PROVIDERS = new Set(['grok', 'minimax', 'codex', 'claude', 'cursor', 'copilot', 'gemini', 'muse']);
+const PROVIDERS = new Set([
+  'grok', 'minimax', 'codex', 'claude', 'cursor', 'copilot', 'gemini', 'muse',
+  'opencode', 'deepseek', 'openrouter', 'kimi', 'moonshot', 'zai', 'vercel', 'poe', 'siliconflow',
+]);
+// Where OpenCode saves each service's key in its auth file, best name first.
+// OpenCode names providers after their models.dev ids.
+const OPENCODE_KEY_NAMES = {
+  opencode: ['opencode-go', 'opencode'],
+  deepseek: ['deepseek'],
+  openrouter: ['openrouter'],
+  kimi: ['kimi-for-coding', 'kimi-code-plan-global', 'kimi-code-plan-cn'],
+  moonshot: ['moonshotai', 'moonshotai-cn'],
+  zai: ['zai-coding-plan', 'zhipuai-coding-plan', 'zai', 'zhipuai'],
+  vercel: ['vercel'],
+  poe: ['poe'],
+  siliconflow: ['siliconflow', 'siliconflow-cn'],
+};
+// MiniMax signs in with a browser, but a Token Plan key reads the same meter.
+const MINIMAX_KEY_NAMES = {
+  global: ['minimax-coding-plan', 'minimax'],
+  cn: ['minimax-cn-coding-plan', 'minimax-cn'],
+};
+
+function opencodeKeyNames(provider, region) {
+  if (provider === 'minimax') return MINIMAX_KEY_NAMES[region === 'cn' ? 'cn' : 'global'];
+  return OPENCODE_KEY_NAMES[provider] || [];
+}
+
+function minimaxMeta(region, extra = {}) {
+  return { region: region === 'cn' ? 'cn' : 'global', countsAre: 'remaining', ...extra };
+}
 
 app.setName('Usage Monitor');
 if (windows) app.setAppUserModelId('app.usage.monitor');
@@ -28,6 +59,9 @@ let win = null;
 let tray = null;
 let normalBounds = null;
 let compact = false;
+let layout = 'stacked';
+let stackedBounds = null;
+let sidewaysBounds = null;
 let refreshing = null;
 let lastResult = null;
 let signInAttempt = 0;
@@ -98,15 +132,26 @@ if (!gotLock) {
   app.on('second-instance', () => showWindow());
 }
 
+function rememberLiveBounds(bounds) {
+  const live = finiteBox(bounds);
+  if (!live) return;
+  if (layout === 'sideways') sidewaysBounds = live;
+  else stackedBounds = live;
+}
+
 function persistBounds() {
   if (!win || preview) return;
   if (compact && normalBounds) {
     const { x, y } = win.getBounds();
     normalBounds = { ...normalBounds, x, y };
   }
-  const bounds = normalBounds || win.getBounds();
+  rememberLiveBounds(compact && normalBounds ? normalBounds : win.getBounds());
+  const patch = { layout, pinned };
+  // Never write a null box over a size the other orientation still needs.
+  if (stackedBounds) patch.bounds = stackedBounds;
+  if (sidewaysBounds) patch.sidewaysBounds = sidewaysBounds;
   try {
-    store.updateSettings({ bounds, pinned });
+    store.updateSettings(patch);
   } catch {
     // A bad read must not replace the saved accounts.
   }
@@ -159,17 +204,24 @@ function createWindow() {
   alarmSound = settings.alarmSound !== false;
   pinned = settings.pinned !== false;
   const shot = process.argv.includes('--shot');
-  const saved = settings.bounds || {};
-  const width = saved.width || 304;
-  const height = saved.height || 500;
-  const bounds = { ...saved, width: shot ? 304 : width, height: shot ? 652 : height };
+  layout = normalizeLayout(process.argv.includes('--sideways') ? 'sideways' : settings.layout);
+  stackedBounds = finiteBox(settings.bounds);
+  sidewaysBounds = finiteBox(settings.sidewaysBounds);
+  const opening = openingSize(layout, { bounds: stackedBounds, sidewaysBounds });
+  // The first sideways open has no saved corner yet. Keep the stacked window's place.
+  if (!Number.isFinite(opening.x) && stackedBounds && Number.isFinite(stackedBounds.x)) {
+    opening.x = Math.round(stackedBounds.x);
+    opening.y = Math.round(stackedBounds.y);
+  }
+  const width = shot ? (layout === 'sideways' ? 860 : 304) : opening.width;
+  const height = shot ? (layout === 'sideways' ? 168 : 652) : opening.height;
   win = new BrowserWindow({
-    width: Math.max(280, bounds.width || 304),
-    height: Math.max(360, bounds.height || 500),
-    x: Number.isFinite(bounds.x) ? bounds.x : undefined,
-    y: Number.isFinite(bounds.y) ? bounds.y : undefined,
-    minWidth: 280,
-    minHeight: 240,
+    width,
+    height,
+    x: Number.isFinite(opening.x) ? opening.x : undefined,
+    y: Number.isFinite(opening.y) ? opening.y : undefined,
+    minWidth: opening.minWidth,
+    minHeight: opening.minHeight,
     show: false,
     frame: false,
     transparent: !windows,
@@ -197,6 +249,7 @@ function createWindow() {
   const query = {};
   if (process.argv.includes('--menu')) query.menu = '1';
   if (process.argv.includes('--compact')) query.compact = '1';
+  if (layout === 'sideways') query.layout = 'sideways';
   const demoAlarm = preview && process.argv.includes('--alarm');
   const showDemoAlarm = () => {
     setTimeout(() => {
@@ -347,7 +400,43 @@ function defaultAuthFile(provider) {
   const home = app.getPath('home');
   if (provider === 'codex') return path.join(home, '.codex', 'auth.json');
   if (provider === 'grok') return path.join(home, '.grok', 'auth.json');
+  if (KEY_PROVIDERS.has(provider) || provider === 'minimax') {
+    const data = process.env.XDG_DATA_HOME || path.join(home, '.local', 'share');
+    return path.join(data, 'opencode', 'auth.json');
+  }
   return null;
+}
+
+// A key is read once before it is saved, so a typo or a key for the wrong
+// service never lands on the board as a permanent error card.
+async function saveKey(provider, secret, label, meta = {}) {
+  const key = cleanSecret(secret).replace(/^bearer\s+/i, '');
+  if (!key) return { ok: false, error: 'Paste a key first.' };
+  const check = await fetchUsage({ id: 'new', provider, label, meta }, key);
+  if (!check.ok) return { ok: false, error: check.error };
+  try {
+    const saved = store.addAccount({ provider, label: label || providerName(provider), secret: key, meta });
+    return { ok: true, account: saved.account, created: saved.created };
+  } catch (error) {
+    return { ok: false, error: error.message || 'The key could not be saved.' };
+  }
+}
+
+async function importOpenCodeKey(provider, file, options = {}) {
+  let data;
+  try {
+    data = JSON.parse(fs.readFileSync(file, 'utf8'));
+  } catch {
+    return { ok: false, error: 'That file could not be read as OpenCode login data.' };
+  }
+  const found = extractOpenCodeKey(data, opencodeKeyNames(provider, options.region));
+  if (!found) {
+    return { ok: false, missing: true, error: `OpenCode has no saved ${providerName(provider)} key on this computer.` };
+  }
+  const meta = provider === 'minimax' ? minimaxMeta(options.region, { keyAuth: true }) : {};
+  const saved = await saveKey(provider, found.key, String(options.label || '').trim(), meta);
+  if (!saved.ok) return saved;
+  return { ok: true, created: saved.created ? 1 : 0, skipped: saved.created ? 0 : 1 };
 }
 
 function normalizeTransparency(value) {
@@ -375,6 +464,7 @@ ipcMain.handle('window:state', () => ({
   alarmSound,
   transparency: normalizeTransparency(store.getSettings().transparency),
   platform: process.platform,
+  layout,
 }));
 
 const REFRESH_MINUTES = new Set([0, 1, 5, 15, 30]);
@@ -425,16 +515,43 @@ ipcMain.handle('window:pin', (_event, enabled) => {
   return next;
 });
 
+function applyLayoutSize(nextLayout, remembered) {
+  const current = compact && normalBounds ? normalBounds : win.getBounds();
+  const placed = placeLayout(nextLayout, remembered, current);
+  layout = placed.layout;
+  compact = false;
+  normalBounds = null;
+  win.setMinimumSize(placed.box.minWidth, placed.box.minHeight);
+  const next = {
+    width: placed.box.width,
+    height: placed.box.height,
+  };
+  if (Number.isFinite(placed.box.x)) next.x = placed.box.x;
+  if (Number.isFinite(placed.box.y)) next.y = placed.box.y;
+  win.setBounds(next);
+}
+
+ipcMain.handle('window:layout', (_event, value) => {
+  if (!win) return layout;
+  const next = normalizeLayout(value);
+  if (next === layout) return layout;
+  rememberLiveBounds(compact && normalBounds ? normalBounds : win.getBounds());
+  applyLayoutSize(next, { bounds: stackedBounds, sidewaysBounds });
+  persistBounds();
+  return layout;
+});
+
 ipcMain.handle('window:compact', (_event, payload) => {
   if (!win) return false;
   const next = Boolean(payload?.compact);
   const height = Math.max(88, Math.min(720, Math.round(Number(payload?.height) || 140)));
+  const mins = openingSize(layout, { bounds: stackedBounds, sidewaysBounds });
   if (next) {
     if (!compact) {
       normalBounds = win.getBounds();
       compact = true;
     }
-    win.setMinimumSize(280, 88);
+    win.setMinimumSize(mins.minWidth, 88);
     win.setSize(normalBounds?.width || win.getBounds().width, height, false);
     return true;
   }
@@ -442,8 +559,8 @@ ipcMain.handle('window:compact', (_event, payload) => {
     compact = false;
     const restore = normalBounds;
     normalBounds = null;
+    win.setMinimumSize(mins.minWidth, mins.minHeight);
     if (restore) win.setBounds(restore);
-    win.setMinimumSize(280, 240);
   }
   return false;
 });
@@ -490,6 +607,7 @@ ipcMain.handle('auth:signin', async (_event, payload) => {
   if (preview) return { ok: false, error: 'Preview mode does not sign in.' };
   const provider = payload?.provider;
   if (!PROVIDERS.has(provider)) return { ok: false, error: 'Choose a service first.' };
+  if (KEY_PROVIDERS.has(provider)) return { ok: false, error: `${providerName(provider)} uses an API key. Paste it instead.` };
   const attempt = ++signInAttempt;
   if (win) win.setAlwaysOnTop(false);
   try {
@@ -537,17 +655,18 @@ ipcMain.handle('auth:cancel', () => {
   return true;
 });
 
-ipcMain.handle('accounts:add', (_event, payload) => {
+ipcMain.handle('accounts:add', async (_event, payload) => {
   if (preview) return { ok: false, error: 'Preview mode does not save accounts.' };
   const provider = payload?.provider;
   const secret = cleanSecret(payload?.secret);
   const label = String(payload?.label || '').trim();
   if (!PROVIDERS.has(provider)) return { ok: false, error: 'Choose a service first.' };
-  if (!secret) return { ok: false, error: 'Paste a login first.' };
+  if (!secret) return { ok: false, error: KEY_PROVIDERS.has(provider) ? 'Paste a key first.' : 'Paste a login first.' };
   try {
+    if (KEY_PROVIDERS.has(provider)) return await saveKey(provider, secret, label);
+    // A pasted MiniMax Token Plan key is checked like any other key.
+    if (provider === 'minimax') return await saveKey(provider, secret, label, minimaxMeta(payload?.region, { keyAuth: true }));
     const meta = {};
-    if (provider === 'minimax') meta.region = payload?.region === 'cn' ? 'cn' : 'global';
-    if (provider === 'minimax') meta.countsAre = 'remaining';
     const saved = store.addAccount({
       provider,
       label: label || providerName(provider),
@@ -602,27 +721,40 @@ async function chooseFile() {
   return picked.filePaths[0];
 }
 
-ipcMain.handle('auth:import', async (_event, provider) => {
+function canImport(provider) {
+  return provider === 'codex' || provider === 'grok' || provider === 'minimax' || KEY_PROVIDERS.has(provider);
+}
+
+function readsOpenCode(provider) {
+  return KEY_PROVIDERS.has(provider) || provider === 'minimax';
+}
+
+ipcMain.handle('auth:import', async (_event, provider, options) => {
   if (preview) return { ok: false, error: 'Preview mode does not import logins.' };
-  if (provider !== 'codex' && provider !== 'grok') {
-    return { ok: false, error: 'Only Codex and Grok can import a login file.' };
+  if (!canImport(provider)) {
+    return { ok: false, error: 'This service cannot import a login file.' };
   }
   const file = defaultAuthFile(provider);
   if (!file || !fs.existsSync(file)) {
+    if (readsOpenCode(provider)) {
+      return { ok: false, missing: true, error: 'No OpenCode login file was found on this computer.' };
+    }
     return { ok: false, missing: true, error: provider === 'codex'
       ? 'No Codex login was found on this computer.'
       : 'No Grok login was found on this computer.' };
   }
+  if (readsOpenCode(provider)) return importOpenCodeKey(provider, file, options || {});
   return importPayload(provider, file);
 });
 
-ipcMain.handle('auth:choose', async (_event, provider) => {
+ipcMain.handle('auth:choose', async (_event, provider, options) => {
   if (preview) return { ok: false, error: 'Preview mode does not import logins.' };
-  if (provider !== 'codex' && provider !== 'grok') {
-    return { ok: false, error: 'Only Codex and Grok can import a login file.' };
+  if (!canImport(provider)) {
+    return { ok: false, error: 'This service cannot import a login file.' };
   }
   const file = await chooseFile();
   if (!file) return { ok: false, canceled: true };
+  if (readsOpenCode(provider)) return importOpenCodeKey(provider, file, options || {});
   return importPayload(provider, file);
 });
 

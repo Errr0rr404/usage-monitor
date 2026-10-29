@@ -11,6 +11,7 @@
   <main id="panel">
   <header>
     <h1>Usage Monitor</h1>
+    <button type="button" id="updated" class="updated" hidden title="Refresh now (⌘R)"></button>
     <div class="header-actions">
       <button type="button" id="settings" aria-expanded="false" aria-haspopup="menu" aria-label="Settings">
         <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true">
@@ -45,6 +46,12 @@
     <button type="button" id="add" role="menuitem">Add account</button>
     <button type="button" id="refresh" role="menuitem">Refresh</button>
     <button type="button" id="compact" role="menuitem">Compact</button>
+    <p class="menu-label">Layout</p>
+    <div class="themes" role="group" aria-label="Layout">
+      <button type="button" data-layout="stacked" aria-pressed="true">Stacked</button>
+      <button type="button" data-layout="sideways" aria-pressed="false">Sideways</button>
+    </div>
+    <p class="menu-note" id="layout-note">Accounts stack down the window.</p>
     <p class="menu-label">Refresh every</p>
     <div class="themes" role="group" aria-label="Refresh every">
       <button type="button" data-refresh="1" aria-pressed="false">1m</button>
@@ -72,16 +79,12 @@
 
     <form id="form" hidden>
       <fieldset>
-        <legend>Service</legend>
-        <div class="choice-grid" id="provider-choices">
-          <button type="button" data-provider="grok" aria-pressed="true">Grok</button>
-          <button type="button" data-provider="minimax" aria-pressed="false">MiniMax</button>
-          <button type="button" data-provider="codex" aria-pressed="false">Codex</button>
-          <button type="button" data-provider="claude" aria-pressed="false">Claude</button>
-          <button type="button" data-provider="cursor" aria-pressed="false">Cursor</button>
-          <button type="button" data-provider="copilot" aria-pressed="false">Copilot</button>
-          <button type="button" data-provider="gemini" aria-pressed="false">Gemini</button>
-          <button type="button" data-provider="muse" aria-pressed="false">Muse</button>
+        <legend class="sr-only">Service</legend>
+        <div id="provider-choices">
+          <p class="choice-heading" id="choices-browser-label">Sign in with your browser</p>
+          <div class="choice-grid providers" data-kind="browser" role="group" aria-labelledby="choices-browser-label"></div>
+          <p class="choice-heading" id="choices-key-label">Paste an API key</p>
+          <div class="choice-grid providers" data-kind="key" role="group" aria-labelledby="choices-key-label"></div>
         </div>
       </fieldset>
 
@@ -89,6 +92,13 @@
         <span>Name</span>
         <input id="label" type="text" maxlength="40" placeholder="Work, personal, a client" autocomplete="off" spellcheck="false">
       </label>
+
+      <label class="field" id="key-field" hidden>
+        <span id="key-label">API key</span>
+        <input id="secret" type="password" placeholder="sk-…" autocomplete="off" spellcheck="false">
+      </label>
+
+      <button type="button" id="import-key" class="import-key" hidden>Use the key OpenCode saved</button>
 
       <div class="field" id="region-field" hidden>
         <span id="region-label">MiniMax site</span>

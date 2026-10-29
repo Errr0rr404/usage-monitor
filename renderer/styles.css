@@ -138,6 +138,34 @@ input {
   margin-left: auto;
 }
 
+/* How old the newest reading is. A click refreshes, like ⌘R. */
+.updated {
+  margin-left: auto;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--quiet);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  -webkit-app-region: no-drag;
+}
+
+.updated:hover:not(:disabled) { color: var(--accent); }
+
+.updated:disabled { opacity: 1; }
+
+.updated:not([hidden]) + .header-actions { margin-left: 0; }
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
 #settings {
   width: 22px;
   height: 22px;
@@ -254,6 +282,43 @@ footer button:hover,
 
 .group { margin: 0 0 8px; }
 
+html[data-layout="sideways"] #board {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: flex-start;
+  gap: 8px;
+  overflow: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--track) transparent;
+}
+
+html[data-layout="sideways"] #board::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+html[data-layout="sideways"] .group {
+  display: contents;
+}
+
+html[data-layout="sideways"] .group h2 {
+  display: none;
+}
+
+html[data-layout="sideways"] #board > .error {
+  flex: 0 0 auto;
+  align-self: center;
+  max-width: 180px;
+  margin: 0;
+}
+
+html[data-layout="sideways"] #board > .empty {
+  flex: 1 1 auto;
+  min-width: min(100%, 420px);
+}
+
 .group h2 {
   margin: 0 0 2px;
   color: var(--accent);
@@ -274,6 +339,65 @@ footer button:hover,
   align-items: center;
   justify-content: space-between;
   gap: 6px;
+}
+
+.account-title {
+  min-width: 0;
+  flex: 1;
+}
+
+.provider-kicker {
+  display: none;
+  margin: 0 0 1px;
+  color: var(--accent);
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 9px;
+  font-weight: 500;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+html[data-layout="sideways"] .account {
+  display: flex;
+  flex-direction: column;
+  flex: 0 0 auto;
+  /* Grow with every gauge. A max-width here lets later windows paint under the next account. */
+  width: max-content;
+  padding: 6px 8px 8px;
+  border-top: 0;
+  background: color-mix(in srgb, var(--field) 78%, transparent);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+html[data-layout="sideways"] .provider-kicker {
+  display: block;
+}
+
+html[data-layout="sideways"] .account-head h3 {
+  max-width: 220px;
+}
+
+html[data-layout="sideways"] .dials {
+  flex-wrap: nowrap;
+}
+
+html[data-layout="sideways"] .dial-item {
+  flex: 0 0 auto;
+  width: 128px;
+}
+
+html[data-layout="sideways"] .dial-item.has-models {
+  width: 176px;
+}
+
+html[data-layout="sideways"] .dial-copy,
+html[data-layout="sideways"] .meter-label,
+html[data-layout="sideways"] .meter-note,
+html[data-layout="sideways"] .meter-models {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .account-head h3 {
@@ -390,6 +514,35 @@ footer button:hover,
   filter: none;
 }
 
+/* A paused window draws only a dashed track: nothing to spend, nothing spent. */
+.gauge.paused .track {
+  stroke: var(--quiet);
+  stroke-dasharray: 2.4 2.6;
+  opacity: 0.5;
+}
+
+.dial-item.paused .dial-figure,
+.dial-item.paused .meter-label { color: var(--quiet); }
+
+/* A pool shared by several models takes the whole row, so the names fit. */
+.dial-item.has-models {
+  flex-basis: 100%;
+  align-items: flex-start;
+}
+
+.dial-item.has-models .dial-copy { padding-top: 3px; }
+
+.meter-models {
+  display: -webkit-box;
+  margin: 2px 0 0;
+  overflow: hidden;
+  color: color-mix(in srgb, var(--quiet) 82%, transparent);
+  font-size: 10px;
+  line-height: 1.3;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
 .dial-figure {
   position: absolute;
   inset: 0;
@@ -412,6 +565,24 @@ footer button:hover,
   margin: 1px 0 0;
   color: var(--quiet);
   font-size: 10px;
+}
+
+.balance-figure {
+  margin: 1px 0 0;
+  color: var(--ink);
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+
+.balance-figure.empty { color: var(--stop); }
+
+.balance-unit {
+  color: var(--quiet);
+  font-family: "Avenir Next", "Segoe UI", sans-serif;
+  font-size: 10px;
+  letter-spacing: 0;
 }
 
 .meter-fallback {
@@ -450,6 +621,20 @@ footer button:hover,
   white-space: nowrap;
 }
 
+html[data-layout="sideways"] .compact-row {
+  flex: 0 0 auto;
+  align-items: center;
+  border-top: 0;
+  padding: 6px 10px;
+  background: color-mix(in srgb, var(--field) 78%, transparent);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+html[data-layout="sideways"] .compact-row strong {
+  max-width: 180px;
+}
+
 .empty { padding: 4px 0; }
 
 .empty p { margin: 0 0 8px; }
@@ -473,6 +658,32 @@ footer button:hover,
   box-shadow: inset 0 0 0 1px var(--accent);
 }
 
+.choice-grid button:hover:not(:disabled) { color: var(--ink); }
+
+/* The service lists: three across, so the two groups fit without scrolling. */
+.choice-grid.providers {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.choice-grid.providers button {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.choice-heading {
+  margin: 8px 0 4px;
+  color: var(--quiet);
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+#provider-choices .choice-heading:first-child { margin-top: 0; }
+
+.empty .choice-heading { margin: 8px 0 4px; }
+
 fieldset {
   border: 0;
   margin: 0;
@@ -488,6 +699,18 @@ legend,
 }
 
 .field { display: block; margin-top: 8px; }
+
+.import-key {
+  display: block;
+  width: 100%;
+  margin-top: 6px;
+  padding: 5px 6px;
+  color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--line);
+  border-radius: 6px;
+}
+
+.import-key[hidden] { display: none; }
 
 input {
   width: 100%;

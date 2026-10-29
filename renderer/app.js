@@ -7,7 +7,9 @@ const PROVIDERS = [
   {
     id: 'minimax',
     name: 'MiniMax',
-    help: 'Your usual browser opens the MiniMax login for the region you picked. The approval page says MiniMax CLI. If it asks for a code, Usage Monitor shows it here. The session stays on this computer.',
+    optionalKey: true,
+    placeholder: 'Token Plan key',
+    help: 'Your usual browser opens the MiniMax login for the region you picked. The approval page says MiniMax CLI. If it asks for a code, Usage Monitor shows it here. Or paste a Token Plan API key, or use the one OpenCode saved, and skip the browser. Either way the login stays on this computer.',
   },
   {
     id: 'codex',
@@ -39,9 +41,79 @@ const PROVIDERS = [
     name: 'Muse',
     help: 'Your usual browser opens the Meta login. Meta asks for a code. Usage Monitor shows that code in this window and copies it. Meta often leaves the usage meters out of its reply, so the board says so instead of guessing; the gauge button on the card spends one tiny request per refresh to read the real meter.',
   },
+  {
+    id: 'opencode',
+    name: 'OpenCode',
+    usesKey: true,
+    placeholder: 'sk-…',
+    help: 'Paste an OpenCode API key from opencode.ai/auth, or use the key OpenCode already saved on this computer. Usage Monitor reads the OpenCode Go 5-hour, weekly, and monthly limits for that workspace. The key is checked once, then locked on this computer.',
+  },
+  {
+    id: 'deepseek',
+    name: 'DeepSeek',
+    usesKey: true,
+    placeholder: 'sk-…',
+    help: 'Paste a DeepSeek API key from platform.deepseek.com/api_keys, or use the key OpenCode already saved. Usage Monitor reads the account balance. Reading it does not spend anything. The key is checked once, then locked on this computer.',
+  },
+  {
+    id: 'openrouter',
+    name: 'OpenRouter',
+    usesKey: true,
+    placeholder: 'sk-or-v1-…',
+    help: 'Paste an OpenRouter management key from openrouter.ai/settings/management-keys to see the credits left on the account. A regular API key only shows its own spending limit. The key is checked once, then locked on this computer.',
+  },
+  {
+    id: 'kimi',
+    name: 'Kimi Code',
+    usesKey: true,
+    placeholder: 'sk-…',
+    help: 'Paste the API key from your Kimi Code membership, or use the key OpenCode saved. Usage Monitor reads the weekly and rolling request limits. The key is checked once, then locked on this computer.',
+  },
+  {
+    id: 'moonshot',
+    name: 'Kimi API',
+    usesKey: true,
+    placeholder: 'sk-…',
+    help: 'Paste a Moonshot AI platform key from platform.moonshot.ai (or platform.moonshot.cn), or use the key OpenCode saved. Usage Monitor reads the account balance. Reading it does not spend anything. The key is checked once, then locked on this computer.',
+  },
+  {
+    id: 'zai',
+    name: 'Z.ai',
+    usesKey: true,
+    placeholder: 'API key',
+    help: 'Paste a Z.ai or Zhipu BigModel API key that belongs to a GLM Coding Plan, or use the key OpenCode saved. Usage Monitor reads the rolling token limits and the MCP call allowance. The key is checked once, then locked on this computer.',
+  },
+  {
+    id: 'vercel',
+    name: 'Vercel AI',
+    usesKey: true,
+    placeholder: 'API key',
+    help: 'Paste a Vercel AI Gateway API key, or use the key OpenCode saved. Usage Monitor reads the gateway credits left on the team. Reading it does not spend anything. The key is checked once, then locked on this computer.',
+  },
+  {
+    id: 'poe',
+    name: 'Poe',
+    usesKey: true,
+    placeholder: 'API key',
+    help: 'Paste a Poe API key from poe.com/api_key, or use the key OpenCode saved. Usage Monitor reads the compute points left. The key is checked once, then locked on this computer.',
+  },
+  {
+    id: 'siliconflow',
+    name: 'SiliconFlow',
+    usesKey: true,
+    placeholder: 'sk-…',
+    help: 'Paste a SiliconFlow API key from cloud.siliconflow.com (or cloud.siliconflow.cn), or use the key OpenCode saved. Usage Monitor reads the account balance. The key is checked once, then locked on this computer.',
+  },
 ];
 
-const ORDER = ['grok', 'minimax', 'codex', 'claude', 'cursor', 'copilot', 'gemini', 'muse'];
+const ORDER = ['grok', 'minimax', 'codex', 'claude', 'cursor', 'copilot', 'gemini', 'muse', 'opencode', 'deepseek', 'openrouter', 'kimi', 'moonshot', 'zai', 'vercel', 'poe', 'siliconflow'];
+
+// The add form and the empty board list services in two groups: the ones that
+// open a browser login, and the ones that take a pasted API key.
+const CHOICE_GROUPS = [
+  { kind: 'browser', title: 'Sign in with your browser', items: PROVIDERS.filter((item) => !item.usesKey) },
+  { kind: 'key', title: 'Paste an API key', items: PROVIDERS.filter((item) => item.usesKey) },
+];
 
 const state = {
   accounts: [],
@@ -64,6 +136,7 @@ const state = {
   platform: 'darwin',
   refreshMinutes: 5,
   alarmSound: true,
+  layout: 'stacked',
 };
 
 const board = document.getElementById('board');
@@ -82,6 +155,10 @@ const refreshButton = document.getElementById('refresh');
 const saveButton = document.getElementById('save');
 const alarm = document.getElementById('reset-alarm');
 const alarmSoundButton = document.getElementById('alarm-sound');
+const keyField = document.getElementById('key-field');
+const secretInput = document.getElementById('secret');
+const importKeyButton = document.getElementById('import-key');
+const updatedButton = document.getElementById('updated');
 const resetAccounts = new Map();
 let signInRequest = 0;
 let sizeRequest = 0;
@@ -142,14 +219,18 @@ function formatCount(value) {
   return new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 }).format(value);
 }
 
-function formatMoney(value) {
+function formatMoney(value, currency = 'USD') {
   const digits = Math.abs(value % 1) < 0.001 ? 0 : 2;
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD',
-    minimumFractionDigits: digits,
-    maximumFractionDigits: digits,
-  }).format(value);
+  try {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency,
+      minimumFractionDigits: digits,
+      maximumFractionDigits: digits,
+    }).format(value);
+  } catch {
+    return `${Number(value).toFixed(digits)} ${currency}`;
+  }
 }
 
 function phraseFromMs(ms) {
@@ -183,6 +264,11 @@ function resetPhrase(window, fetchedAt) {
 
 function presentWindow(window, fetchedAt) {
   const reset = resetPhrase(window, fetchedAt);
+  // Antigravity switches a window off (its 5 hours while the week is spent).
+  // Its number means nothing then, so say paused instead of 100% left.
+  if (window.paused) {
+    return { value: 'Paused', unit: '', note: reset, left: 0, tone: 'paused', bar: true, paused: true };
+  }
   if (window.unit === 'unlimited') {
     return { value: 'Unlimited', unit: '', note: reset, left: 100, tone: 'ok', bar: true };
   }
@@ -194,6 +280,30 @@ function presentWindow(window, fetchedAt) {
       left: 100,
       tone: 'ok',
       bar: false,
+    };
+  }
+  if (window.unit === 'balance') {
+    const amount = Math.max(0, Number(window.amount) || 0);
+    const granted = Number(window.granted) || 0;
+    if (window.format === 'points') {
+      return {
+        value: formatCount(amount),
+        unit: 'points left',
+        note: '',
+        left: amount > 0 ? 100 : 0,
+        tone: amount > 0 ? 'ok' : 'empty',
+        bar: false,
+        balance: true,
+      };
+    }
+    return {
+      value: formatMoney(amount, window.currency || 'USD'),
+      unit: 'left',
+      note: granted > 0 ? `includes ${formatMoney(granted, window.currency || 'USD')} granted` : '',
+      left: amount > 0 ? 100 : 0,
+      tone: amount > 0 ? 'ok' : 'empty',
+      bar: false,
+      balance: true,
     };
   }
   if (window.unit === 'dollars' && window.limit != null && window.used != null) {
@@ -243,7 +353,7 @@ function toneFor(left) {
 }
 
 function tightest(windows) {
-  const scored = (windows || []).filter((window) => window.usedPercent != null && window.unit !== 'unlimited' && window.unit !== 'credits');
+  const scored = (windows || []).filter((window) => !window.paused && window.usedPercent != null && window.unit !== 'unlimited' && window.unit !== 'credits');
   if (!scored.length) return (windows || [])[0] || null;
   return scored.reduce((best, window) => (window.usedPercent > best.usedPercent ? window : best));
 }
@@ -253,29 +363,98 @@ function gaugeMarkup(left, tone) {
   const circumference = 2 * Math.PI * radius;
   const clamped = Math.max(0, Math.min(100, left));
   const drawn = (clamped / 100) * circumference;
-  return `<svg class="gauge ${tone}" viewBox="0 0 36 36" aria-hidden="true"><circle class="track" cx="18" cy="18" r="${radius}"></circle><circle class="value" cx="18" cy="18" r="${radius}" stroke-dasharray="${drawn.toFixed(2)} ${circumference.toFixed(2)}"></circle></svg>`;
+  // A round cap on a zero-length arc still paints a dot, so an empty gauge
+  // draws only its track.
+  const value = drawn > 0
+    ? `<circle class="value" cx="18" cy="18" r="${radius}" stroke-dasharray="${drawn.toFixed(2)} ${circumference.toFixed(2)}"></circle>`
+    : '';
+  return `<svg class="gauge ${tone}" viewBox="0 0 36 36" aria-hidden="true"><circle class="track" cx="18" cy="18" r="${radius}"></circle>${value}</svg>`;
+}
+
+// A pooled window lists the models that share it. The family the label already
+// names is dropped from each model so the line stays short: "Gemini models"
+// reads "3 Flash · 2.5 Pro", the full names stay in the tooltip.
+function modelsLine(window) {
+  const models = Array.isArray(window.models) ? window.models.filter(Boolean).map(String) : [];
+  if (!models.length) return '';
+  const label = String(window.label || '').toLowerCase();
+  const short = models.map((model) => {
+    const [first, ...rest] = model.split(' ');
+    return rest.length && new RegExp(`(^|[^a-z])${first.toLowerCase().replace(/[^a-z0-9]/g, '')}([^a-z]|$)`).test(label) ? rest.join(' ') : model;
+  });
+  const count = models.length === 1 ? '1 model' : `${models.length} models`;
+  return `<p class="meter-models" title="${esc(models.join(', '))}"><span class="sr-only">${esc(count)}: </span>${esc(short.join(' · '))}</p>`;
 }
 
 function renderMeter(window, fetchedAt) {
   const view = presentWindow(window, fetchedAt);
+  const models = modelsLine(window);
+  const itemClass = `dial-item${models ? ' has-models' : ''}${view.paused ? ' paused' : ''}`;
+  if (view.balance) {
+    const note = view.note ? `<p class="meter-note">${esc(view.note)}</p>` : '';
+    return `<div class="dial-item balance-item"><div class="dial-copy"><div class="meter-label">${esc(window.label)}</div><p class="balance-figure ${view.tone}">${esc(view.value)} <span class="balance-unit">${esc(view.unit)}</span></p>${note}</div></div>`;
+  }
   if (!view.bar) {
     return `<p class="meter-fallback">${esc(window.label)} ${esc(view.value)}${view.unit ? ` ${esc(view.unit)}` : ''}</p>`;
   }
   const percent = String(view.value).includes('%');
-  const noteText = percent ? view.note : [view.value, view.unit, view.note].filter(Boolean).join(' ');
+  let noteText = percent ? view.note : [view.value, view.unit, view.note].filter(Boolean).join(' ');
+  if (view.paused) noteText = [view.value, view.note].filter(Boolean).join(', ');
   const reset = resetPhrase(window, fetchedAt);
   const countdown = reset && noteText.endsWith(reset)
     ? ` data-countdown="${resetDeadline(window, fetchedAt)}" data-countdown-prefix="${esc(noteText.slice(0, -reset.length))}"`
     : '';
   const note = noteText ? `<p class="meter-note"${countdown}>${esc(noteText)}</p>` : '';
-  const figure = percent ? view.value.replace('%', '') : Math.round(view.left);
-  return `<div class="dial-item"><div class="dial" role="meter" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${view.left}" aria-label="${esc(window.label)}, ${esc(view.value)} ${esc(view.unit)}">${gaugeMarkup(view.left, view.tone)}<span class="dial-figure ${view.tone}">${esc(figure)}</span></div><div class="dial-copy"><div class="meter-label">${esc(window.label)}</div>${note}</div></div>`;
+  const figure = view.paused ? '–' : percent ? view.value.replace('%', '') : Math.round(view.left);
+  const spoken = [window.label, view.value, view.unit].filter(Boolean).join(', ').replace(/, (left)$/, ' $1');
+  return `<div class="${itemClass}"><div class="dial" role="meter" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${view.left}" aria-label="${esc(spoken)}">${gaugeMarkup(view.left, view.tone)}<span class="dial-figure ${view.tone}">${esc(figure)}</span></div><div class="dial-copy"><div class="meter-label">${esc(window.label)}</div>${note}${models}</div></div>`;
 }
 
 function updateCountdowns() {
   document.querySelectorAll('[data-countdown]').forEach((note) => {
     const text = note.dataset.countdownPrefix + phraseFromMs(Number(note.dataset.countdown) - Date.now());
     if (note.textContent !== text) note.textContent = text;
+  });
+  renderUpdated();
+}
+
+function agoPhrase(ms) {
+  if (ms < 60000) return 'just now';
+  const mins = Math.floor(ms / 60000);
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 48) return `${hours}h ago`;
+  return `${Math.floor(hours / 24)}d ago`;
+}
+
+// The newest reading on the board. A failed account still counts: the board
+// tried then, and its error says why there is no number.
+function lastUpdated() {
+  const times = Object.values(state.snapshots || {})
+    .map((snapshot) => Date.parse(snapshot?.fetchedAt))
+    .filter(Number.isFinite);
+  return times.length ? Math.max(...times) : null;
+}
+
+function renderUpdated() {
+  const last = lastUpdated();
+  updatedButton.hidden = state.formOpen || (!state.refreshing && last == null);
+  updatedButton.disabled = state.refreshing;
+  const text = state.refreshing ? 'Updating…' : last == null ? '' : `Updated ${agoPhrase(Math.max(0, Date.now() - last))}`;
+  if (updatedButton.textContent !== text) updatedButton.textContent = text;
+  const stamp = last == null ? '' : new Date(last).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  updatedButton.title = stamp ? `Read at ${stamp}. Refresh now (⌘R)` : 'Refresh now (⌘R)';
+  updatedButton.setAttribute('aria-label', text ? `${text}. Refresh now` : 'Refresh now');
+}
+
+function choiceButtons(items, attribute) {
+  return items.map((item) => `<button type="button" ${attribute}="${item.id}">${esc(item.name)}</button>`).join('');
+}
+
+function renderChoices() {
+  document.querySelectorAll('#provider-choices [data-kind]').forEach((grid) => {
+    const group = CHOICE_GROUPS.find((item) => item.kind === grid.dataset.kind);
+    grid.innerHTML = group ? choiceButtons(group.items, 'data-provider') : '';
   });
 }
 
@@ -309,7 +488,10 @@ function renderAccount(account) {
   const title = [plan, name].filter(Boolean).join(' · ');
   return `<article class="account">
     <div class="account-head">
-      <h3${title ? ` title="${esc(title)}"` : ''}>${plan ? esc(plan) : ''}${name ? ` <span class="plan${plan ? '' : ' lead'}">[${esc(name)}]</span>` : ''}</h3>
+      <div class="account-title">
+        <p class="provider-kicker">${esc(providerName(account.provider))}</p>
+        <h3${title ? ` title="${esc(title)}"` : ''}>${plan ? esc(plan) : ''}${name ? ` <span class="plan${plan ? '' : ' lead'}">[${esc(name)}]</span>` : ''}</h3>
+      </div>
       <div class="account-actions">${actions}</div>
     </div>
     ${body}
@@ -322,9 +504,8 @@ function renderBoard() {
     board.innerHTML = `<div class="empty">
       ${state.boardError ? `<p class="error">${esc(state.boardError)}</p>` : ''}
       <p>Add an account to see what is left. Each service can hold more than one login. Hide keeps Usage Monitor running in the background.</p>
-      <div class="choice-grid">
-        ${PROVIDERS.map((item) => `<button type="button" data-open="${item.id}">${item.name}</button>`).join('')}
-      </div>
+      ${CHOICE_GROUPS.map((group) => `<p class="choice-heading" id="empty-${group.kind}-label">${esc(group.title)}</p>
+      <div class="choice-grid providers" role="group" aria-labelledby="empty-${group.kind}-label">${choiceButtons(group.items, 'data-open')}</div>`).join('')}
     </div>`;
     return;
   }
@@ -373,10 +554,29 @@ function renderChrome() {
     ? 'Stays above other windows, on every desktop.'
     : 'Stays above other windows.';
   compactButton.textContent = state.compact ? 'Show gauges' : 'Compact';
+  document.querySelectorAll('#menu [data-layout]').forEach((button) => {
+    button.setAttribute('aria-pressed', button.dataset.layout === state.layout ? 'true' : 'false');
+  });
+  document.getElementById('layout-note').textContent = state.layout === 'sideways'
+    ? 'Accounts sit in a row. Scroll sideways for the rest.'
+    : 'Accounts stack down the window.';
+  document.documentElement.dataset.layout = state.layout;
   refreshButton.textContent = state.refreshing ? 'Refreshing' : 'Refresh';
   refreshButton.disabled = state.refreshing;
+  const chosen = PROVIDERS.find((item) => item.id === state.provider) || PROVIDERS[0];
+  const keyed = savesKey(chosen);
   saveButton.disabled = state.saving;
-  saveButton.textContent = state.saving ? 'Waiting for sign-in' : 'Sign in';
+  if (keyed) saveButton.textContent = state.saving ? 'Checking key' : 'Save key';
+  else saveButton.textContent = state.saving ? 'Waiting for sign-in' : 'Sign in';
+  keyField.hidden = !chosen.usesKey && !chosen.optionalKey;
+  document.getElementById('key-label').textContent = chosen.optionalKey ? 'API key (optional)' : 'API key';
+  // An OpenRouter key in OpenCode is an inference key, not the management key
+  // the credits need, so there is nothing useful to import for it.
+  importKeyButton.hidden = !(chosen.usesKey || chosen.optionalKey) || chosen.id === 'openrouter';
+  importKeyButton.disabled = state.saving;
+  secretInput.disabled = state.saving;
+  secretInput.placeholder = chosen.placeholder || '';
+  renderUpdated();
   form.hidden = !state.formOpen;
   board.hidden = state.formOpen;
   footerForm.hidden = !state.formOpen;
@@ -392,10 +592,10 @@ function renderChrome() {
     button.disabled = state.saving;
     button.setAttribute('aria-pressed', button.dataset.provider === state.provider ? 'true' : 'false');
   });
-  document.querySelectorAll('[data-theme]').forEach((button) => {
+  document.querySelectorAll('#menu [data-theme]').forEach((button) => {
     button.setAttribute('aria-pressed', button.dataset.theme === state.theme ? 'true' : 'false');
   });
-  document.querySelectorAll('[data-refresh]').forEach((button) => {
+  document.querySelectorAll('#menu [data-refresh]').forEach((button) => {
     button.setAttribute('aria-pressed', Number(button.dataset.refresh) === state.refreshMinutes ? 'true' : 'false');
   });
   document.documentElement.dataset.theme = state.theme;
@@ -416,6 +616,10 @@ function render() {
   renderChrome();
   renderBoard();
   syncCompactSize();
+}
+
+function savesKey(provider) {
+  return Boolean(provider.usesKey || (provider.optionalKey && secretInput.value.trim()));
 }
 
 function openForm(provider) {
@@ -499,14 +703,42 @@ async function syncCompactSize() {
   }
 }
 
+async function chooseLayout(next) {
+  if (next !== 'stacked' && next !== 'sideways') return;
+  if (next === state.layout) return;
+  // Drop a compact resize that is already in flight. The window changes
+  // shape first, then compact measures the new row.
+  sizeRequest += 1;
+  state.layout = next;
+  state.menuOpen = false;
+  document.documentElement.dataset.layout = next;
+  renderChrome();
+  renderBoard();
+  try {
+    state.layout = await desk.setLayout(next);
+  } catch {
+    // A closing window may no longer accept size changes.
+  }
+  document.documentElement.dataset.layout = state.layout;
+  renderChrome();
+  await syncCompactSize();
+}
+
 menu.addEventListener('click', async (event) => {
-  const theme = event.target.closest('[data-theme]');
+  // html also has data-theme and data-layout so the CSS can see the choice.
+  // closest() would walk up to that and treat every menu click as a theme change.
+  const theme = event.target.closest('#menu [data-theme]');
   if (theme) {
     state.theme = await desk.setTheme(theme.dataset.theme);
     renderChrome();
     return;
   }
-  const rate = event.target.closest('[data-refresh]');
+  const pickedLayout = event.target.closest('#menu [data-layout]');
+  if (pickedLayout) {
+    await chooseLayout(pickedLayout.dataset.layout);
+    return;
+  }
+  const rate = event.target.closest('#menu [data-refresh]');
   if (!rate) return;
   state.refreshMinutes = await desk.setRefresh(Number(rate.dataset.refresh));
   scheduleRefresh();
@@ -597,6 +829,11 @@ document.getElementById('provider-choices').addEventListener('click', (event) =>
   renderChrome();
 });
 
+// MiniMax takes either a browser login or a key; the button says which.
+secretInput.addEventListener('input', () => {
+  if (selectedProvider().optionalKey) renderChrome();
+});
+
 regionField.addEventListener('click', (event) => {
   const button = event.target.closest('[data-region]');
   if (!button) return;
@@ -657,24 +894,38 @@ form.addEventListener('submit', (event) => {
 
 document.getElementById('cancel').addEventListener('click', cancelForm);
 
+function selectedProvider() {
+  return PROVIDERS.find((item) => item.id === state.provider) || PROVIDERS[0];
+}
+
 document.getElementById('save').addEventListener('click', async () => {
   if (state.saving) return;
   const request = ++signInRequest;
   const label = document.getElementById('label').value.trim();
+  const usesKey = savesKey(selectedProvider());
+  const secret = secretInput.value.trim();
+  if (usesKey && !secret) {
+    state.formError = 'Paste a key first.';
+    renderChrome();
+    secretInput.focus();
+    return;
+  }
   state.saving = true;
   state.formError = '';
-  state.hint = 'Opening your browser…';
+  state.hint = usesKey ? 'Checking the key…' : 'Opening your browser…';
   state.deviceCode = '';
   renderChrome();
   let result;
   try {
-    result = await desk.signIn({
-      provider: state.provider,
-      label,
-      region: state.region,
-    });
+    result = usesKey
+      ? await desk.addAccount({ provider: state.provider, label, secret, region: state.region })
+      : await desk.signIn({
+        provider: state.provider,
+        label,
+        region: state.region,
+      });
   } catch {
-    result = { ok: false, error: 'Sign-in could not finish. Try again.' };
+    result = { ok: false, error: usesKey ? 'The key could not be saved. Try again.' : 'Sign-in could not finish. Try again.' };
   }
   if (request !== signInRequest) return;
   state.saving = false;
@@ -691,6 +942,39 @@ document.getElementById('save').addEventListener('click', async () => {
   }
   if (!result.created) {
     state.formError = 'That login is already on the board.';
+    renderChrome();
+    return;
+  }
+  closeForm();
+  await refresh();
+});
+
+importKeyButton.addEventListener('click', async () => {
+  if (state.saving) return;
+  const request = ++signInRequest;
+  state.saving = true;
+  state.formError = '';
+  state.hint = 'Checking the key OpenCode saved…';
+  renderChrome();
+  let result;
+  try {
+    result = await desk.importLogin(state.provider, {
+      region: state.region,
+      label: document.getElementById('label').value.trim(),
+    });
+  } catch {
+    result = { ok: false, error: 'The saved key could not be read.' };
+  }
+  if (request !== signInRequest) return;
+  state.saving = false;
+  state.hint = '';
+  if (!result?.ok) {
+    state.formError = result?.error || 'The saved key could not be read.';
+    renderChrome();
+    return;
+  }
+  if (!result.created) {
+    state.formError = 'That key is already on the board.';
     renderChrome();
     return;
   }
@@ -745,6 +1029,8 @@ desk.onAuthHint((hint) => {
 
 desk.onRefreshRequest(() => refresh());
 
+updatedButton.addEventListener('click', () => refresh());
+
 function showResetAlarm(payload) {
   for (const account of payload?.accounts || []) {
     const previous = resetAccounts.get(account.id);
@@ -792,6 +1078,10 @@ function dismissResetAlarm() {
 desk.onResetAlarm(showResetAlarm);
 document.getElementById('reset-alarm-dismiss').addEventListener('click', dismissResetAlarm);
 
+const launchQuery = new URLSearchParams(location.search);
+if (launchQuery.get('layout') === 'sideways') state.layout = 'sideways';
+document.documentElement.dataset.layout = state.layout;
+
 async function init() {
   const query = new URLSearchParams(location.search);
   if (query.get('menu') === '1') state.menuOpen = true;
@@ -803,8 +1093,11 @@ async function init() {
   state.transparency = Number.isFinite(windowState.transparency) ? windowState.transparency : 0;
   state.refreshMinutes = Number.isFinite(windowState.refreshMinutes) ? windowState.refreshMinutes : 5;
   state.alarmSound = windowState.alarmSound !== false;
+  state.layout = windowState.layout === 'sideways' ? 'sideways' : 'stacked';
   document.documentElement.dataset.theme = state.theme;
   document.documentElement.dataset.platform = state.platform;
+  document.documentElement.dataset.layout = state.layout;
+  renderChoices();
   render();
   await refresh();
   if (windowState.form) openForm(windowState.form);

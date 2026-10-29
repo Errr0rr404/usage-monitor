@@ -9,8 +9,8 @@ contextBridge.exposeInMainWorld('desk', {
   removeAccount: (id) => ipcRenderer.invoke('accounts:remove', id),
   signIn: (payload) => ipcRenderer.invoke('auth:signin', payload),
   cancelSignIn: () => ipcRenderer.invoke('auth:cancel'),
-  importLogin: (provider) => ipcRenderer.invoke('auth:import', provider),
-  chooseAuthFile: (provider) => ipcRenderer.invoke('auth:choose', provider),
+  importLogin: (provider, options) => ipcRenderer.invoke('auth:import', provider, options),
+  chooseAuthFile: (provider, options) => ipcRenderer.invoke('auth:choose', provider, options),
   setTheme: (theme) => ipcRenderer.invoke('window:theme', theme),
   setRefresh: (minutes) => ipcRenderer.invoke('window:refresh', minutes),
   setAlarmSound: (enabled) => ipcRenderer.invoke('window:alarm-sound', enabled),
@@ -18,6 +18,7 @@ contextBridge.exposeInMainWorld('desk', {
   setPinned: (pinned) => ipcRenderer.invoke('window:pin', pinned),
   setTransparency: (percent) => ipcRenderer.invoke('window:transparency', percent),
   setCompact: (payload) => ipcRenderer.invoke('window:compact', payload),
+  setLayout: (layout) => ipcRenderer.invoke('window:layout', layout),
   hide: () => ipcRenderer.invoke('window:hide'),
   onAuthHint: (callback) => {
     const listener = (_event, hint) => callback(hint);
