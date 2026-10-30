@@ -371,25 +371,18 @@ function gaugeMarkup(left, tone) {
   return `<svg class="gauge ${tone}" viewBox="0 0 36 36" aria-hidden="true"><circle class="track" cx="18" cy="18" r="${radius}"></circle>${value}</svg>`;
 }
 
-// A pooled window lists the models that share it. The family the label already
-// names is dropped from each model so the line stays short: "Gemini models"
-// reads "3 Flash · 2.5 Pro", the full names stay in the tooltip.
-function modelsLine(window) {
+// A pooled window lists the models that share it. The names stay in the
+// tooltip: spelled out under each dial they stacked one pool per row.
+function modelsTitle(window) {
   const models = Array.isArray(window.models) ? window.models.filter(Boolean).map(String) : [];
-  if (!models.length) return '';
-  const label = String(window.label || '').toLowerCase();
-  const short = models.map((model) => {
-    const [first, ...rest] = model.split(' ');
-    return rest.length && new RegExp(`(^|[^a-z])${first.toLowerCase().replace(/[^a-z0-9]/g, '')}([^a-z]|$)`).test(label) ? rest.join(' ') : model;
-  });
-  const count = models.length === 1 ? '1 model' : `${models.length} models`;
-  return `<p class="meter-models" title="${esc(models.join(', '))}"><span class="sr-only">${esc(count)}: </span>${esc(short.join(' · '))}</p>`;
+  return models.length ? `${window.label}: ${models.join(', ')}` : '';
 }
 
 function renderMeter(window, fetchedAt) {
   const view = presentWindow(window, fetchedAt);
-  const models = modelsLine(window);
-  const itemClass = `dial-item${models ? ' has-models' : ''}${view.paused ? ' paused' : ''}`;
+  const itemClass = `dial-item${view.paused ? ' paused' : ''}`;
+  const tip = modelsTitle(window) || (String(view.value).includes('%') ? `${window.label}: ${view.value} left` : '');
+  const modelsAttr = tip ? ` title="${esc(tip)}"` : '';
   if (view.balance) {
     const note = view.note ? `<p class="meter-note">${esc(view.note)}</p>` : '';
     return `<div class="dial-item balance-item"><div class="dial-copy"><div class="meter-label">${esc(window.label)}</div><p class="balance-figure ${view.tone}">${esc(view.value)} <span class="balance-unit">${esc(view.unit)}</span></p>${note}</div></div>`;
@@ -398,7 +391,7 @@ function renderMeter(window, fetchedAt) {
     return `<p class="meter-fallback">${esc(window.label)} ${esc(view.value)}${view.unit ? ` ${esc(view.unit)}` : ''}</p>`;
   }
   const percent = String(view.value).includes('%');
-  let noteText = percent ? view.note : [view.value, view.unit, view.note].filter(Boolean).join(' ');
+  let noteText = percent ? [`${view.value} left`, view.note].filter(Boolean).join(' · ') : [view.value, view.unit, view.note].filter(Boolean).join(' ');
   if (view.paused) noteText = [view.value, view.note].filter(Boolean).join(', ');
   const reset = resetPhrase(window, fetchedAt);
   const countdown = reset && noteText.endsWith(reset)
@@ -407,7 +400,7 @@ function renderMeter(window, fetchedAt) {
   const note = noteText ? `<p class="meter-note"${countdown}>${esc(noteText)}</p>` : '';
   const figure = view.paused ? '–' : percent ? view.value.replace('%', '') : Math.round(view.left);
   const spoken = [window.label, view.value, view.unit].filter(Boolean).join(', ').replace(/, (left)$/, ' $1');
-  return `<div class="${itemClass}"><div class="dial" role="meter" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${view.left}" aria-label="${esc(spoken)}">${gaugeMarkup(view.left, view.tone)}<span class="dial-figure ${view.tone}">${esc(figure)}</span></div><div class="dial-copy"><div class="meter-label">${esc(window.label)}</div>${note}${models}</div></div>`;
+  return `<div class="${itemClass}"${modelsAttr}><div class="dial" role="meter" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${view.left}" aria-label="${esc(spoken)}">${gaugeMarkup(view.left, view.tone)}<span class="dial-figure ${view.tone}">${esc(figure)}</span></div><div class="dial-copy"><div class="meter-label">${esc(window.label)}</div>${note}</div></div>`;
 }
 
 function updateCountdowns() {

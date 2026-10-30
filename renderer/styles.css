@@ -384,17 +384,12 @@ html[data-layout="sideways"] .dials {
 
 html[data-layout="sideways"] .dial-item {
   flex: 0 0 auto;
-  width: 128px;
-}
-
-html[data-layout="sideways"] .dial-item.has-models {
-  width: 176px;
+  width: 156px;
 }
 
 html[data-layout="sideways"] .dial-copy,
 html[data-layout="sideways"] .meter-label,
-html[data-layout="sideways"] .meter-note,
-html[data-layout="sideways"] .meter-models {
+html[data-layout="sideways"] .meter-note {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -523,25 +518,6 @@ html[data-layout="sideways"] .meter-models {
 
 .dial-item.paused .dial-figure,
 .dial-item.paused .meter-label { color: var(--quiet); }
-
-/* A pool shared by several models takes the whole row, so the names fit. */
-.dial-item.has-models {
-  flex-basis: 100%;
-  align-items: flex-start;
-}
-
-.dial-item.has-models .dial-copy { padding-top: 3px; }
-
-.meter-models {
-  display: -webkit-box;
-  margin: 2px 0 0;
-  overflow: hidden;
-  color: color-mix(in srgb, var(--quiet) 82%, transparent);
-  font-size: 10px;
-  line-height: 1.3;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-}
 
 .dial-figure {
   position: absolute;
