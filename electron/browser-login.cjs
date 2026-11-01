@@ -15,8 +15,9 @@ const {
 let current = null;
 
 function htmlPage(title, message) {
-  const safe = String(message || '').replace(/[&<>]/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[char]));
-  return `<!DOCTYPE html><html lang="en"><meta charset="utf-8"><title>${safe}</title><body style="margin:0;min-height:100vh;display:grid;place-items:center;background:#23272c;color:#f3f0e8;font-family:Avenir Next,Segoe UI,sans-serif"><p style="font-size:18px">${safe}</p></body></html>`;
+  const escape = (text) => String(text || '').replace(/[&<>]/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[char]));
+  const safe = escape(message);
+  return `<!DOCTYPE html><html lang="en"><meta charset="utf-8"><title>${escape(title)}</title><body style="margin:0;min-height:100vh;display:grid;place-items:center;background:#23272c;color:#f3f0e8;font-family:Avenir Next,Segoe UI,sans-serif"><p style="font-size:18px">${safe}</p></body></html>`;
 }
 
 function listen(port, host, handler) {
@@ -25,6 +26,8 @@ function listen(port, host, handler) {
     server.once('error', reject);
     server.listen(port, host, () => {
       server.removeAllListeners('error');
+      // A later socket error must not become an uncaught exception in the main process.
+      server.on('error', () => {});
       resolve(server);
     });
   });

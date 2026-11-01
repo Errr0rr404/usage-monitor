@@ -9,10 +9,26 @@ const distDir = path.join(__dirname, '..', 'dist');
 function requireEnv(name) {
   const value = process.env[name];
   if (!value) {
-    console.error(`${name} is required to notarize the Mac disk images.`);
+    console.error(`${name} (or APPLE_KEYCHAIN_PROFILE) is required to notarize the Mac disk images.`);
     process.exit(1);
   }
   return value;
+}
+
+// A notarytool keychain profile (xcrun notarytool store-credentials) keeps the
+// secret out of the environment. Otherwise use the App Store Connect API key.
+function notaryAuth() {
+  const profile = process.env.APPLE_KEYCHAIN_PROFILE;
+  if (profile) {
+    const args = ['--keychain-profile', profile];
+    if (process.env.APPLE_KEYCHAIN) args.push('--keychain', process.env.APPLE_KEYCHAIN);
+    return args;
+  }
+  return [
+    '--key', requireEnv('APPLE_API_KEY'),
+    '--key-id', requireEnv('APPLE_API_KEY_ID'),
+    '--issuer', requireEnv('APPLE_API_ISSUER'),
+  ];
 }
 
 function run(command, args) {
@@ -72,10 +88,13 @@ function assessDiskImage(dmgPath) {
     assess(appPath);
     const copyPath = path.join(os.tmpdir(), `usage-monitor-gatekeeper-${process.pid}`);
     fs.rmSync(copyPath, { recursive: true, force: true });
-    run('ditto', [appPath, copyPath]);
-    run('xattr', ['-w', 'com.apple.quarantine', '0083;00000000;Safari;00000000-0000-0000-0000-000000000000', copyPath]);
-    assess(copyPath);
-    fs.rmSync(copyPath, { recursive: true, force: true });
+    try {
+      run('ditto', [appPath, copyPath]);
+      run('xattr', ['-w', 'com.apple.quarantine', '0083;00000000;Safari;00000000-0000-0000-0000-000000000000', copyPath]);
+      assess(copyPath);
+    } finally {
+      fs.rmSync(copyPath, { recursive: true, force: true });
+    }
   } finally {
     run('hdiutil', ['detach', volume]);
   }
@@ -83,9 +102,7 @@ function assessDiskImage(dmgPath) {
 
 function main() {
   if (process.platform !== 'darwin') return;
-  const key = requireEnv('APPLE_API_KEY');
-  const keyId = requireEnv('APPLE_API_KEY_ID');
-  const issuer = requireEnv('APPLE_API_ISSUER');
+  const auth = notaryAuth();
   const images = diskImages();
   if (!images.length) {
     console.error('No disk images were found in dist/.');
@@ -93,13 +110,7 @@ function main() {
   }
   for (const image of images) {
     console.log(`Notarizing ${path.basename(image)}`);
-    run('xcrun', [
-      'notarytool', 'submit', image,
-      '--key', key,
-      '--key-id', keyId,
-      '--issuer', issuer,
-      '--wait',
-    ]);
+    run('xcrun', ['notarytool', 'submit', image, ...auth, '--wait']);
     staple(image);
     run('xcrun', ['stapler', 'validate', image]);
     assessDiskImage(image);
