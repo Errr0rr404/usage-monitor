@@ -1,4 +1,5 @@
-// The Computers tab: this computer first, then the ones added over SSH.
+// The Computers board (its own tab, or the right side when side by side):
+// this computer first, then the ones added over SSH.
 // Loaded before app.js, which owns state, render() and the shared helpers.
 // Everything here runs only after app.js has loaded.
 
@@ -341,7 +342,7 @@ function applyComputers(payload) {
   if (state.pendingComputerRemove && !state.computers.some((computer) => computer.id === state.pendingComputerRemove)) {
     state.pendingComputerRemove = null;
   }
-  if (state.tab !== 'computers') return;
+  if (!showsComputers()) return;
   renderComputers();
   syncCompactSize();
 }
@@ -355,7 +356,7 @@ async function loadComputers() {
 }
 
 function syncComputersLive() {
-  const live = state.tab === 'computers' && document.visibilityState === 'visible';
+  const live = showsComputers() && document.visibilityState === 'visible';
   desk.setComputersLive(live).catch(() => {});
 }
 
@@ -426,6 +427,6 @@ function initComputers() {
   document.addEventListener('visibilitychange', syncComputersLive);
   desk.onComputers(applyComputers);
   setInterval(() => {
-    if (state.tab === 'computers') updateRetryCountdowns();
+    if (showsComputers()) updateRetryCountdowns();
   }, 1000);
 }

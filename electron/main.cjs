@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Tray, Menu, dialog, ipcMain, nativeImage, Notification, clipboard } = require('electron');
+const { app, BrowserWindow, Tray, Menu, dialog, ipcMain, nativeImage, Notification, clipboard, screen } = require('electron');
 const { spawn } = require('child_process');
 const crypto = require('crypto');
 const fs = require('fs');
@@ -13,7 +13,7 @@ const { createWatch, checkComputer, sshHosts, closeConnections } = require('./co
 const { collectResets, describeResets, resetChimeWav } = require('../lib/reset-alarm.cjs');
 const { trayPng } = require('../lib/tray-icon.cjs');
 const { remainingLeft, trayDisplay, providerName } = require('../lib/tray.cjs');
-const { normalizeLayout, finiteBox, openingSize, placeLayout } = require('../lib/layout.cjs');
+const { BOX_KEYS, normalizeLayout, normalizeView, boxKey, finiteBox, openingSize, placeLayout, fitInside } = require('../lib/layout.cjs');
 const { signIn, cancelSignIn } = require('./browser-login.cjs');
 
 const darwin = process.platform === 'darwin';
@@ -63,8 +63,9 @@ let tray = null;
 let normalBounds = null;
 let compact = false;
 let layout = 'stacked';
-let stackedBounds = null;
-let sidewaysBounds = null;
+let view = 'tabs';
+// The last size and corner of each window shape, keyed like the settings.
+const savedBoxes = {};
 let refreshing = null;
 let lastResult = null;
 let signInAttempt = 0;
@@ -74,16 +75,34 @@ let tab = 'ai';
 let computersLive = false;
 let watch = null;
 const limitState = new Map();
+// A rotated login that could not be saved is still the one to use next time:
+// the old one stops working once the service hands out the new one.
+const unsavedSecrets = new Map();
 
 function normalizeTab(value) {
   return value === 'computers' ? 'computers' : 'ai';
 }
 
-// Live means someone is looking at the Computers tab: read every 5 seconds.
-// Otherwise the readings only tick over once a minute.
+function computersShown() {
+  return view === 'split' || tab === 'computers';
+}
+
+// Live means someone is looking at the computers, on their tab or side by
+// side: read every 5 seconds. Otherwise the readings only tick over once a minute.
 function syncComputersActive() {
   if (!watch) return;
-  watch.setActive(computersLive && tab === 'computers' && Boolean(win) && !win.isDestroyed() && win.isVisible());
+  watch.setActive(computersLive && computersShown() && Boolean(win) && !win.isDestroyed() && win.isVisible());
+}
+
+// Settings are saved on a best-effort basis: the change still applies for
+// this run if the account file could not be read.
+function saveSettings(patch) {
+  if (preview) return;
+  try {
+    store.updateSettings(patch);
+  } catch {
+    // Not remembered, but not lost for this run either.
+  }
 }
 
 // --live-computers=mini,me@box reads real computers in preview mode, so a
@@ -189,8 +208,19 @@ if (!gotLock) {
 function rememberLiveBounds(bounds) {
   const live = finiteBox(bounds);
   if (!live) return;
-  if (layout === 'sideways') sidewaysBounds = live;
-  else stackedBounds = live;
+  savedBoxes[boxKey(layout, view)] = live;
+}
+
+// A saved corner can belong to a display that is gone, and a wider shape can
+// hang off the edge. Keep the window on the nearest screen.
+function fitOnScreen(box) {
+  if (!Number.isFinite(box.x) || !Number.isFinite(box.y)) return box;
+  try {
+    const display = screen.getDisplayMatching({ x: box.x, y: box.y, width: box.width, height: box.height });
+    return fitInside(box, display.workArea);
+  } catch {
+    return box;
+  }
 }
 
 function persistBounds() {
@@ -200,10 +230,11 @@ function persistBounds() {
     normalBounds = { ...normalBounds, x, y };
   }
   rememberLiveBounds(compact && normalBounds ? normalBounds : win.getBounds());
-  const patch = { layout, pinned };
-  // Never write a null box over a size the other orientation still needs.
-  if (stackedBounds) patch.bounds = stackedBounds;
-  if (sidewaysBounds) patch.sidewaysBounds = sidewaysBounds;
+  const patch = { layout, view, pinned };
+  // Never write a null box over a size another shape still needs.
+  for (const key of Object.values(BOX_KEYS)) {
+    if (savedBoxes[key]) patch[key] = savedBoxes[key];
+  }
   try {
     store.updateSettings(patch);
   } catch {
@@ -260,15 +291,26 @@ function createWindow() {
   tab = normalizeTab(process.argv.includes('--computers') ? 'computers' : settings.tab);
   const shot = process.argv.includes('--shot');
   layout = normalizeLayout(process.argv.includes('--sideways') ? 'sideways' : settings.layout);
-  stackedBounds = finiteBox(settings.bounds);
-  sidewaysBounds = finiteBox(settings.sidewaysBounds);
-  const opening = openingSize(layout, { bounds: stackedBounds, sidewaysBounds });
-  // The first sideways open has no saved corner yet. Keep the stacked window's place.
-  if (!Number.isFinite(opening.x) && stackedBounds && Number.isFinite(stackedBounds.x)) {
-    opening.x = Math.round(stackedBounds.x);
-    opening.y = Math.round(stackedBounds.y);
+  view = normalizeView(process.argv.includes('--split') ? 'split' : settings.view);
+  for (const key of Object.values(BOX_KEYS)) {
+    const box = finiteBox(settings[key]);
+    if (box) savedBoxes[key] = box;
+    else delete savedBoxes[key];
   }
-  const width = shot ? (layout === 'sideways' ? 860 : 304) : opening.width;
+  let opening = openingSize(layout, savedBoxes, view);
+  // The first open of a shape has no saved corner yet. Keep the place of
+  // another shape, the stacked window first.
+  if (!Number.isFinite(opening.x)) {
+    const placed = Object.values(BOX_KEYS).map((key) => savedBoxes[key]).find((box) => box && Number.isFinite(box.x));
+    if (placed) {
+      opening.x = Math.round(placed.x);
+      opening.y = Math.round(placed.y);
+    }
+  }
+  if (!shot) opening = { ...opening, ...fitOnScreen(opening) };
+  const split = view === 'split';
+  const shotWidth = layout === 'sideways' ? (split ? 1180 : 860) : (split ? 620 : 304);
+  const width = shot ? shotWidth : opening.width;
   const height = shot ? (layout === 'sideways' ? 168 : 652) : opening.height;
   win = new BrowserWindow({
     width,
@@ -305,6 +347,7 @@ function createWindow() {
   if (process.argv.includes('--menu')) query.menu = '1';
   if (process.argv.includes('--compact')) query.compact = '1';
   if (layout === 'sideways') query.layout = 'sideways';
+  if (view === 'split') query.view = 'split';
   const demoAlarm = preview && process.argv.includes('--alarm');
   const showDemoAlarm = () => {
     setTimeout(() => {
@@ -344,7 +387,7 @@ function createWindow() {
     win.webContents.once('did-finish-load', async () => {
       const live = Boolean(liveComputerTargets());
       const settle = process.argv.includes('--compact') ? 1600 : 900;
-      await new Promise((resolve) => setTimeout(resolve, live ? 12000 : settle + (tab === 'computers' ? 1200 : 0)));
+      await new Promise((resolve) => setTimeout(resolve, live ? 12000 : settle + (computersShown() ? 1200 : 0)));
       let code = 0;
       try {
         const image = await win.webContents.capturePage();
@@ -377,7 +420,8 @@ async function refreshAll() {
   refreshing = (async () => {
     const rows = store.eachSecret();
     const snapshots = {};
-    await Promise.all(rows.map(async ({ account, secret }) => {
+    await Promise.all(rows.map(async ({ account, secret: stored }) => {
+      const secret = unsavedSecrets.get(account.id) || stored;
       if (!secret) {
         snapshots[account.id] = {
           ok: false,
@@ -393,13 +437,16 @@ async function refreshAll() {
         ...account,
         meta: { ...(account.meta || {}), museMeter: store.getMeter(account.id) },
       }, secret);
-      if (snapshot.secret) {
+      const fresh = snapshot.secret || unsavedSecrets.get(account.id);
+      delete snapshot.secret;
+      if (fresh) {
         try {
-          store.updateSecret(account.id, snapshot.secret);
+          store.updateSecret(account.id, fresh);
+          unsavedSecrets.delete(account.id);
         } catch {
-          // The refreshed session still works for this pass even if it could not be locked.
+          // Keep it for the next pass, which uses it and tries to lock it again.
+          unsavedSecrets.set(account.id, fresh);
         }
-        delete snapshot.secret;
       }
       if (snapshot.meter) {
         try {
@@ -531,28 +578,26 @@ function applyTransparency(percent) {
   return transparency;
 }
 
-ipcMain.handle('window:state', () => ({
-  pinned,
-  preview,
-  form: formPreview ? 'claude' : '',
-  theme: store.getSettings().theme || 'ion',
-  refreshMinutes: normalizeRefresh(store.getSettings().refreshMinutes),
-  alarmSound,
-  transparency: normalizeTransparency(store.getSettings().transparency),
-  platform: process.platform,
-  layout,
-  tab,
-}));
+ipcMain.handle('window:state', () => {
+  const settings = store.getSettings();
+  return {
+    pinned,
+    preview,
+    form: formPreview ? 'claude' : '',
+    theme: settings.theme || 'ion',
+    refreshMinutes: normalizeRefresh(settings.refreshMinutes),
+    alarmSound,
+    transparency: normalizeTransparency(settings.transparency),
+    platform: process.platform,
+    layout,
+    view,
+    tab,
+  };
+});
 
 ipcMain.handle('window:tab', (_event, value) => {
   tab = normalizeTab(value);
-  if (!preview) {
-    try {
-      store.updateSettings({ tab });
-    } catch {
-      // The tab still switches; it just is not remembered.
-    }
-  }
+  saveSettings({ tab });
   syncComputersActive();
   return tab;
 });
@@ -672,13 +717,13 @@ function normalizeRefresh(value) {
 
 ipcMain.handle('window:refresh', (_event, minutes) => {
   const next = normalizeRefresh(minutes);
-  if (!preview) store.updateSettings({ refreshMinutes: next });
+  saveSettings({ refreshMinutes: next });
   return next;
 });
 
 ipcMain.handle('window:alarm-sound', (_event, enabled) => {
   const next = Boolean(enabled);
-  if (!preview) store.updateSettings({ alarmSound: next });
+  saveSettings({ alarmSound: next });
   alarmSound = next;
   return next;
 });
@@ -692,13 +737,13 @@ ipcMain.handle('window:test-alarm', () => {
 
 ipcMain.handle('window:theme', (_event, theme) => {
   const next = ['ion', 'ember', 'void'].includes(theme) ? theme : 'ion';
-  if (!preview) store.updateSettings({ theme: next });
+  saveSettings({ theme: next });
   return next;
 });
 
 ipcMain.handle('window:transparency', (_event, percent) => {
   const next = normalizeTransparency(percent);
-  if (!preview) store.updateSettings({ transparency: next });
+  saveSettings({ transparency: next });
   return applyTransparency(next);
 });
 
@@ -707,41 +752,58 @@ ipcMain.handle('window:pin', (_event, enabled) => {
   const next = Boolean(enabled);
   pinWindow(win, next);
   pinned = next;
-  if (!preview) store.updateSettings({ pinned: next });
+  saveSettings({ pinned: next });
   return next;
 });
 
-function applyLayoutSize(nextLayout, remembered) {
+function applyLayoutSize(nextLayout, nextView) {
   const current = compact && normalBounds ? normalBounds : win.getBounds();
-  const placed = placeLayout(nextLayout, remembered, current);
+  const placed = placeLayout(nextLayout, savedBoxes, current, nextView);
   layout = placed.layout;
+  view = placed.view;
   compact = false;
   normalBounds = null;
   win.setMinimumSize(placed.box.minWidth, placed.box.minHeight);
-  const next = {
+  const next = fitOnScreen({
     width: placed.box.width,
     height: placed.box.height,
-  };
-  if (Number.isFinite(placed.box.x)) next.x = placed.box.x;
-  if (Number.isFinite(placed.box.y)) next.y = placed.box.y;
+    x: placed.box.x,
+    y: placed.box.y,
+  });
+  if (!Number.isFinite(next.x)) delete next.x;
+  if (!Number.isFinite(next.y)) delete next.y;
   win.setBounds(next);
+}
+
+// Leave the current shape's size behind, then open the next shape's.
+function changeShape(nextLayout, nextView) {
+  rememberLiveBounds(compact && normalBounds ? normalBounds : win.getBounds());
+  applyLayoutSize(nextLayout, nextView);
+  persistBounds();
+  syncComputersActive();
 }
 
 ipcMain.handle('window:layout', (_event, value) => {
   if (!win) return layout;
   const next = normalizeLayout(value);
   if (next === layout) return layout;
-  rememberLiveBounds(compact && normalBounds ? normalBounds : win.getBounds());
-  applyLayoutSize(next, { bounds: stackedBounds, sidewaysBounds });
-  persistBounds();
+  changeShape(next, view);
   return layout;
+});
+
+ipcMain.handle('window:view', (_event, value) => {
+  if (!win) return view;
+  const next = normalizeView(value);
+  if (next === view) return view;
+  changeShape(layout, next);
+  return view;
 });
 
 ipcMain.handle('window:compact', (_event, payload) => {
   if (!win) return false;
   const next = Boolean(payload?.compact);
   const height = Math.max(88, Math.min(720, Math.round(Number(payload?.height) || 140)));
-  const mins = openingSize(layout, { bounds: stackedBounds, sidewaysBounds });
+  const mins = openingSize(layout, savedBoxes, view);
   if (next) {
     if (!compact) {
       normalBounds = win.getBounds();
@@ -899,6 +961,7 @@ ipcMain.handle('accounts:remove', (_event, id) => {
   if (preview) return (lastResult || previewState()).accounts;
   const accounts = store.removeAccount(id);
   pruneLimitState(id);
+  unsavedSecrets.delete(id);
   if (lastResult) {
     lastResult.accounts = accounts;
     delete lastResult.snapshots[id];

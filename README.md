@@ -54,7 +54,7 @@ Services with a China site (Kimi API, Z.ai, SiliconFlow, MiniMax) try the global
 
 ## Computers
 
-The header has two tabs: AI usage, and Computers. Usage Monitor remembers the one you left open. The menu bar and tray icon keep showing the starred AI account on either tab.
+The header has two tabs: AI usage, and Computers. Usage Monitor remembers the one you left open. Or show them [side by side](#side-by-side). The menu bar and tray icon keep showing the starred AI account on either tab.
 
 ![The Computers tab with this Mac, a Mac mini, an iMac, and a netcup server](docs/computers.png)
 
@@ -67,7 +67,13 @@ Each computer gets four rings in the same style as the AI cards: CPU, RAM, GPU, 
 | GPU | `ioreg` (Apple silicon, and other GPUs that report use there) | `nvidia-smi` if installed, otherwise n/a | `nvidia-smi` if installed |
 | Disk | Free space on the data volume | Free space on `/` | Free space on the system drive |
 
-This computer is always first and cannot be removed. While the Computers tab is open, readings refresh every 5 seconds. Otherwise they refresh once a minute.
+This computer is always first and cannot be removed. While the computers are on screen, readings refresh every 5 seconds. Otherwise they refresh once a minute.
+
+### Side by side
+
+To see both at once, choose View: Side by side in the settings menu. AI usage sits on the left and computers on the right, both live, in place of the tabs. Tabs stay the default. Side by side works with the stacked and sideways layouts and with compact mode, and it remembers its own window size, so switching back to tabs returns the narrow window.
+
+![AI usage and computers side by side](docs/side-by-side.png)
 
 ### Add a computer
 
@@ -112,7 +118,7 @@ npm run dist:mac
 npm run dist:win
 ```
 
-`dist:mac` builds Apple silicon and Intel, then notarizes the disk images. It needs `APPLE_API_KEY` (path to the App Store Connect `.p8` key), `APPLE_API_KEY_ID`, and `APPLE_API_ISSUER`, and a Developer ID Application certificate in the keychain. `dist:win` builds 64-bit and 32-bit installers.
+`dist:mac` builds Apple silicon and Intel, then notarizes the apps and the disk images. It needs a Developer ID Application certificate in the keychain and either `APPLE_KEYCHAIN_PROFILE` (a profile saved with `xcrun notarytool store-credentials`) or `APPLE_API_KEY` (path to the App Store Connect `.p8` key), `APPLE_API_KEY_ID`, and `APPLE_API_ISSUER`. `dist:win` builds 64-bit and 32-bit installers.
 
 ## License
 

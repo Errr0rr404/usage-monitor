@@ -306,6 +306,55 @@ footer button:hover,
   overflow: auto;
 }
 
+/* The two boards. Tabs show one column; side by side shows both. */
+.boards {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  -webkit-app-region: no-drag;
+}
+
+.column {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.column-heading { display: none; }
+
+html[data-view="split"] .boards { flex-direction: row; }
+
+html[data-view="split"] .column { flex: 1 1 0; }
+
+html[data-view="split"] .column + .column {
+  margin-left: 8px;
+  padding-left: 8px;
+  border-left: 1px solid var(--line);
+}
+
+/* Styled like the lit tab, so each side says what it holds. */
+html[data-view="split"] .column-heading {
+  display: block;
+  flex: none;
+  margin: 0 0 5px;
+  color: var(--ink);
+  font-size: 10.5px;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  user-select: none;
+}
+
+/* The heading already says Computers. */
+html[data-view="split"] #computers .group > h2 { display: none; }
+
+/* A sideways strip has no height to spare: the cards already name the service. */
+html[data-view="split"][data-layout="sideways"] .column-heading { display: none; }
+
 .board::-webkit-scrollbar,
 #form::-webkit-scrollbar,
 #computer-form::-webkit-scrollbar { width: 6px; }

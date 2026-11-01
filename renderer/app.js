@@ -137,6 +137,7 @@ const state = {
   refreshMinutes: 5,
   alarmSound: true,
   layout: 'stacked',
+  view: 'tabs',
   tab: 'ai',
   computers: [],
   readings: {},
@@ -166,9 +167,27 @@ const secretInput = document.getElementById('secret');
 const importKeyButton = document.getElementById('import-key');
 const updatedButton = document.getElementById('updated');
 const tabButtons = [...document.querySelectorAll('[role="tab"][data-tab]')];
+const tabStrip = document.querySelector('.tabs');
+const boards = document.getElementById('boards');
+const columnAi = document.getElementById('column-ai');
+const columnComputers = document.getElementById('column-computers');
 const resetAccounts = new Map();
 let signInRequest = 0;
 let sizeRequest = 0;
+
+// Tabs show one board at a time. Side by side shows AI usage on the left and
+// computers on the right, both live.
+function sideBySide() {
+  return state.view === 'split';
+}
+
+function showsAi() {
+  return sideBySide() || state.tab === 'ai';
+}
+
+function showsComputers() {
+  return sideBySide() || state.tab === 'computers';
+}
 
 function esc(value) {
   return String(value ?? '').replace(/[&<>"']/g, (char) => ({
@@ -438,7 +457,7 @@ function lastUpdated() {
 
 function renderUpdated() {
   const last = lastUpdated();
-  updatedButton.hidden = state.formOpen || state.tab !== 'ai' || (!state.refreshing && last == null);
+  updatedButton.hidden = state.formOpen || Boolean(state.computerForm) || !showsAi() || (!state.refreshing && last == null);
   updatedButton.disabled = state.refreshing;
   const text = state.refreshing ? 'Updating…' : last == null ? '' : `Updated ${agoPhrase(Math.max(0, Date.now() - last))}`;
   if (updatedButton.textContent !== text) updatedButton.textContent = text;
@@ -553,7 +572,7 @@ function renderChrome() {
   document.getElementById('pin-note').textContent = state.platform === 'darwin'
     ? 'Stays above other windows, on every desktop.'
     : 'Stays above other windows.';
-  compactButton.textContent = state.compact ? (state.tab === 'computers' ? 'Show rings' : 'Show gauges') : 'Compact';
+  compactButton.textContent = state.compact ? (showsAi() ? 'Show gauges' : 'Show rings') : 'Compact';
   document.querySelectorAll('#menu [data-layout]').forEach((button) => {
     button.setAttribute('aria-pressed', button.dataset.layout === state.layout ? 'true' : 'false');
   });
@@ -561,7 +580,14 @@ function renderChrome() {
     ? 'Accounts sit in a row. Scroll sideways for the rest.'
     : 'Accounts stack down the window.';
   document.documentElement.dataset.layout = state.layout;
-  refreshButton.textContent = state.refreshing && state.tab === 'ai' ? 'Refreshing' : 'Refresh';
+  document.querySelectorAll('#menu [data-view]').forEach((button) => {
+    button.setAttribute('aria-pressed', button.dataset.view === state.view ? 'true' : 'false');
+  });
+  document.getElementById('view-note').textContent = sideBySide()
+    ? 'AI usage on the left, computers on the right.'
+    : 'AI usage and Computers each get a tab.';
+  document.documentElement.dataset.view = state.view;
+  refreshButton.textContent = state.refreshing && showsAi() ? 'Refreshing' : 'Refresh';
   const chosen = PROVIDERS.find((item) => item.id === state.provider) || PROVIDERS[0];
   const keyed = savesKey(chosen);
   saveButton.disabled = state.saving;
@@ -576,11 +602,19 @@ function renderChrome() {
   secretInput.disabled = state.saving;
   secretInput.placeholder = chosen.placeholder || '';
   renderUpdated();
-  const onComputers = state.tab === 'computers';
+  const split = sideBySide();
   const sheetOpen = state.formOpen || Boolean(state.computerForm);
   form.hidden = !state.formOpen;
-  board.hidden = state.formOpen || onComputers;
-  computersBoard.hidden = !onComputers || Boolean(state.computerForm);
+  // A sign-in or computer sheet takes the whole window, in either view.
+  boards.hidden = sheetOpen;
+  columnAi.hidden = !showsAi();
+  columnComputers.hidden = !showsComputers();
+  tabStrip.hidden = split;
+  // Side by side there are no tabs, so each board is a region named by its heading.
+  board.setAttribute('role', split ? 'region' : 'tabpanel');
+  board.setAttribute('aria-labelledby', split ? 'heading-ai' : 'tab-ai');
+  computersBoard.setAttribute('role', split ? 'region' : 'tabpanel');
+  computersBoard.setAttribute('aria-labelledby', split ? 'heading-computers' : 'tab-computers');
   footerForm.hidden = !state.formOpen;
   renderComputerForm();
   menu.hidden = !state.menuOpen || sheetOpen;
@@ -592,9 +626,9 @@ function renderChrome() {
     button.tabIndex = selected ? 0 : -1;
     button.disabled = sheetOpen;
   });
-  document.getElementById('add').hidden = onComputers;
-  document.getElementById('add-computer').hidden = !onComputers;
-  refreshButton.disabled = !onComputers && state.refreshing;
+  document.getElementById('add').hidden = !showsAi();
+  document.getElementById('add-computer').hidden = !showsComputers();
+  refreshButton.disabled = !showsComputers() && state.refreshing;
   const selected = PROVIDERS.find((item) => item.id === state.provider) || PROVIDERS[0];
   help.textContent = state.saving && state.hint ? state.hint : selected.help;
   deviceCode.hidden = !state.deviceCode;
@@ -627,13 +661,13 @@ function renderChrome() {
 function render() {
   renderChrome();
   renderBoard();
-  if (state.tab === 'computers') renderComputers();
+  if (showsComputers()) renderComputers();
   syncCompactSize();
 }
 
 async function chooseTab(next) {
   const tab = next === 'computers' ? 'computers' : 'ai';
-  if (tab === state.tab || state.formOpen || state.computerForm) return;
+  if (tab === state.tab || sideBySide() || state.formOpen || state.computerForm) return;
   state.tab = tab;
   state.menuOpen = false;
   state.pendingRemove = null;
@@ -710,21 +744,26 @@ async function refresh() {
 
 function measureCompactHeight() {
   const panel = document.getElementById('panel');
-  const boardEl = state.tab === 'computers' ? computersBoard : document.getElementById('board');
-  const previous = {
-    panelHeight: panel.style.height,
-    boardFlex: boardEl.style.flex,
-    boardOverflow: boardEl.style.overflow,
-  };
+  // Let every box that shares the height grow to its content. Side by side
+  // the columns sit in a row, so the taller one sets the height; their flex
+  // there is their width and stays as it is.
+  const grown = [boards, board, computersBoard];
+  if (!sideBySide()) grown.push(columnAi, columnComputers);
+  const previous = grown.map((element) => [element, element.style.flex, element.style.overflow]);
+  const panelHeight = panel.style.height;
   panel.style.height = 'auto';
-  boardEl.style.flex = '0 0 auto';
-  boardEl.style.overflow = 'visible';
+  for (const element of grown) {
+    element.style.flex = '0 0 auto';
+    element.style.overflow = 'visible';
+  }
   const bodyStyle = getComputedStyle(document.body);
   const extra = (parseFloat(bodyStyle.paddingTop) || 0) + (parseFloat(bodyStyle.paddingBottom) || 0);
   const height = Math.ceil(panel.getBoundingClientRect().height + extra + 2);
-  panel.style.height = previous.panelHeight;
-  boardEl.style.flex = previous.boardFlex;
-  boardEl.style.overflow = previous.boardOverflow;
+  panel.style.height = panelHeight;
+  for (const [element, flex, overflow] of previous) {
+    element.style.flex = flex;
+    element.style.overflow = overflow;
+  }
   return height;
 }
 
@@ -766,6 +805,32 @@ async function chooseLayout(next) {
   await syncCompactSize();
 }
 
+async function chooseView(next) {
+  if (next !== 'tabs' && next !== 'split') return;
+  if (next === state.view) return;
+  // Same order as a layout change: the window changes shape first, then
+  // compact measures the new boards.
+  sizeRequest += 1;
+  state.view = next;
+  state.menuOpen = false;
+  state.pendingRemove = null;
+  state.pendingComputerRemove = null;
+  document.documentElement.dataset.view = next;
+  renderChrome();
+  renderBoard();
+  if (showsComputers()) renderComputers();
+  syncComputersLive();
+  try {
+    state.view = await desk.setView(next);
+  } catch {
+    // A closing window may no longer accept size changes.
+  }
+  document.documentElement.dataset.view = state.view;
+  renderChrome();
+  syncComputersLive();
+  await syncCompactSize();
+}
+
 menu.addEventListener('click', async (event) => {
   // html also has data-theme and data-layout so the CSS can see the choice.
   // closest() would walk up to that and treat every menu click as a theme change.
@@ -778,6 +843,11 @@ menu.addEventListener('click', async (event) => {
   const pickedLayout = event.target.closest('#menu [data-layout]');
   if (pickedLayout) {
     await chooseLayout(pickedLayout.dataset.layout);
+    return;
+  }
+  const pickedView = event.target.closest('#menu [data-view]');
+  if (pickedView) {
+    await chooseView(pickedView.dataset.view);
     return;
   }
   const rate = event.target.closest('#menu [data-refresh]');
@@ -848,8 +918,8 @@ document.getElementById('test-alarm').addEventListener('click', () => {
 document.getElementById('hide').addEventListener('click', () => desk.hide());
 
 function refreshTab() {
-  if (state.tab === 'computers') desk.refreshComputers().catch(() => {});
-  else refresh();
+  if (showsComputers()) desk.refreshComputers().catch(() => {});
+  if (showsAi()) refresh();
 }
 
 document.getElementById('refresh').addEventListener('click', () => {
@@ -1132,7 +1202,9 @@ document.getElementById('reset-alarm-dismiss').addEventListener('click', dismiss
 
 const launchQuery = new URLSearchParams(location.search);
 if (launchQuery.get('layout') === 'sideways') state.layout = 'sideways';
+if (launchQuery.get('view') === 'split') state.view = 'split';
 document.documentElement.dataset.layout = state.layout;
+document.documentElement.dataset.view = state.view;
 
 async function init() {
   const query = new URLSearchParams(location.search);
@@ -1146,11 +1218,13 @@ async function init() {
   state.refreshMinutes = Number.isFinite(windowState.refreshMinutes) ? windowState.refreshMinutes : 5;
   state.alarmSound = windowState.alarmSound !== false;
   state.layout = windowState.layout === 'sideways' ? 'sideways' : 'stacked';
+  state.view = windowState.view === 'split' ? 'split' : 'tabs';
   state.tab = windowState.tab === 'computers' ? 'computers' : 'ai';
   document.documentElement.dataset.tab = state.tab;
   document.documentElement.dataset.theme = state.theme;
   document.documentElement.dataset.platform = state.platform;
   document.documentElement.dataset.layout = state.layout;
+  document.documentElement.dataset.view = state.view;
   renderChoices();
   initComputers();
   render();
