@@ -69,6 +69,8 @@ Each computer gets four rings in the same style as the AI cards: CPU, RAM, GPU, 
 
 This computer is always first and cannot be removed. While the computers are on screen, readings refresh every 5 seconds. Otherwise they refresh once a minute.
 
+On a Mac, computers on your home network (`.local` names, 192.168.x, 10.x, 172.16 to 31.x, link-local) need macOS's Local Network permission. macOS may not ask for it, or you may have said no. In that case the card shows "No route to that computer" with a hint to turn on System Settings › Privacy & Security › Local Network › Usage Monitor.
+
 ### Side by side
 
 To see both at once, choose View: Side by side in the settings menu. AI usage sits on the left and computers on the right, both live, in place of the tabs. Tabs stay the default. Side by side works with the stacked and sideways layouts and with compact mode, and it remembers its own window size, so switching back to tabs returns the narrow window.

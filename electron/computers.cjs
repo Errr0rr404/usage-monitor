@@ -124,7 +124,7 @@ async function readRemote(computer) {
   if (result.spawnError) return { ok: false, error: 'SSH is not installed on this computer.' };
   if (result.timedOut) return { ok: false, error: `No reading within ${Math.round(PROBE_TIMEOUT_MS / 1000)} seconds.` };
   if (result.code !== 0 && !result.stdout.includes('@@end')) {
-    return { ok: false, error: explainSshError(result.stderr, result.code) };
+    return { ok: false, error: explainSshError(result.stderr, result.code, { target: computer.target }) };
   }
   return parseProbe(result.stdout);
 }
