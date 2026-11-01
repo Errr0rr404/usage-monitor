@@ -1,0 +1,75 @@
+@@os
+Darwin
+arm64
+@@host
+mac-mini.local
+@@ncpu
+12
+@@model
+Apple M6
+@@memsize
+17179869184
+@@vmstat
+Mach Virtual Memory Statistics: (page size of 16384 bytes)
+Pages free:                                     8970.
+Pages active:                                 107289.
+Pages inactive:                               104720.
+Pages speculative:                              1492.
+Pages throttled:                                   0.
+Pages wired down:                             265727.
+Pages purgeable:                                   0.
+"Translation faults":                    22672319721.
+Pages copy-on-write:                      1885024262.
+Pages zero filled:                        7138957557.
+Pages reactivated:                        3646903726.
+Pages purged:                               86943809.
+File-backed pages:                             67223.
+Anonymous pages:                              146278.
+Pages stored in compressor:                   830293.
+Pages occupied by compressor:                 522818.
+Decompressions:                           6143686921.
+Compressions:                             6569039025.
+Pageins:                                   292819885.
+Pageouts:                                    3302203.
+Swapins:                                   334308257.
+Swapouts:                                  344826696.
+Pages tagged:                                 124484.
+Pages tagged resident:                         95807.
+Pages tagged compressed:                       28677.
+Pages tag-storage:                             32768.
+Pages tag-storage holding tags:                 4037.
+Pages tag-storage free:                           69.
+Pages tag-storage non-tag pageable:            28577.
+Pages tag-storage non-tag wired:                   0.
+Bytes of compressed tags:                    4938624.
+Tagged compressions:                        94759687.
+Tagged decompressions:                      92955006.
+@@pressure
+4
+@@memfree
+21
+@@load
+{ 6.21 7.90 8.46 }
+@@boottime
+{ sec = 1793064302, usec = 827697 } Mon Oct 26 21:25:02 2026
+@@now
+1793499788
+@@cpu
+      cpu    load average
+ us sy id   1m   5m   15m
+ 14  6 81  6.21 7.90 8.46
+ 22 40 38  6.21 7.90 8.46
+@@gpu
+      "PerformanceStatistics" = {"In use system memory (driver)"=0,"Alloc system memory"=597147648,"Tiler Utilization %"=0,"recoveryCount"=0,"lastRecoveryTime"=0,"Renderer Utilization %"=0,"TiledSceneBytes"=655360,"Device Utilization %"=0,"SplitSceneCount"=0,"Allocated PB Size"=22544384,"In use system memory"=200458240}
+      "model" = "Apple M6"
+      "IOClass" = "AGXAcceleratorG18G"
+@@top
+117.3 node
+ 48.4 npm ci
+ 39.9 node
+ 23.5 node
+ 17.1 /System/Library/Frameworks/CoreServices.framework/Versions/A/Frameworks/Metadata.framework/Versions/A/Support/mds
+ 15.1 node
+@@df
+/dev/disk3s5   239311296 195748904   4536276    98%    /System/Volumes/Data
+@@end

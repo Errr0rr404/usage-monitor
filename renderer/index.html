@@ -10,7 +10,11 @@
 <body>
   <main id="panel">
   <header>
-    <h1>Usage Monitor</h1>
+    <h1 class="sr-only">Usage Monitor</h1>
+    <div class="tabs" role="tablist" aria-label="Board">
+      <button type="button" role="tab" id="tab-ai" data-tab="ai" aria-selected="true" aria-controls="board">AI usage</button>
+      <button type="button" role="tab" id="tab-computers" data-tab="computers" aria-selected="false" aria-controls="computers" tabindex="-1">Computers</button>
+    </div>
     <button type="button" id="updated" class="updated" hidden title="Refresh now (⌘R)"></button>
     <div class="header-actions">
       <button type="button" id="settings" aria-expanded="false" aria-haspopup="menu" aria-label="Settings">
@@ -44,6 +48,7 @@
 
   <div id="menu" hidden role="menu" aria-label="Settings">
     <button type="button" id="add" role="menuitem">Add account</button>
+    <button type="button" id="add-computer" role="menuitem" hidden>Add computer</button>
     <button type="button" id="refresh" role="menuitem">Refresh</button>
     <button type="button" id="compact" role="menuitem">Compact</button>
     <p class="menu-label">Layout</p>
@@ -75,7 +80,37 @@
     <p class="menu-note" id="opacity-note">Solid. Drag right to see through the window.</p>
   </div>
 
-    <div id="board" aria-live="polite"></div>
+    <div id="board" class="board" role="tabpanel" aria-labelledby="tab-ai" aria-live="polite"></div>
+    <div id="computers" class="board" role="tabpanel" aria-labelledby="tab-computers" hidden></div>
+
+    <form id="computer-form" class="sheet" hidden>
+      <h2 class="sheet-title" id="computer-form-title">Add a computer</h2>
+      <div id="ssh-hosts-field">
+        <p class="choice-heading" id="ssh-hosts-label">From your SSH config</p>
+        <div class="choice-grid providers" id="ssh-hosts" role="group" aria-labelledby="ssh-hosts-label"></div>
+      </div>
+      <div class="field-row">
+        <label class="field grow">
+          <span id="computer-target-label">Or type an address</span>
+          <input id="computer-target" type="text" maxlength="120" placeholder="user@host" autocomplete="off" spellcheck="false" autocapitalize="off">
+        </label>
+        <label class="field port">
+          <span>Port</span>
+          <input id="computer-port" type="text" inputmode="numeric" maxlength="5" placeholder="22" autocomplete="off" spellcheck="false">
+        </label>
+      </div>
+      <label class="field">
+        <span>Name</span>
+        <input id="computer-name" type="text" maxlength="40" placeholder="Mac mini, studio iMac, netcup" autocomplete="off" spellcheck="false">
+      </label>
+      <p class="sheet-help">Usage Monitor signs in with your own SSH keys and agent, never a password. It runs read-only commands (sysctl, vm_stat, /proc, df) and installs nothing. Only the name and address are saved.</p>
+      <p id="computer-error" class="error" role="alert" hidden></p>
+    </form>
+
+    <footer id="footer-computer" hidden>
+      <button type="button" id="computer-cancel">Cancel</button>
+      <button type="button" id="computer-save" class="primary">Add</button>
+    </footer>
 
     <form id="form" hidden>
       <fieldset>
@@ -119,6 +154,7 @@
     </footer>
 
   </main>
+  <script src="computers.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

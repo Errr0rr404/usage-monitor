@@ -1,0 +1,38 @@
+@@os
+Linux
+aarch64
+@@host
+oracle-box
+@@ncpu
+2
+@@model
+@@stat1
+cpu  17562505 1712 11989009 59271526 47452 0 311942 309373 0 0
+@@stat2
+cpu  17562512 1712 11989015 59271711 47452 0 311943 309373 0 0
+@@meminfo
+MemTotal:       12211392 kB
+MemFree:         1789508 kB
+MemAvailable:    8280540 kB
+Buffers:          201568 kB
+Cached:          5744568 kB
+SwapTotal:             0 kB
+SwapFree:              0 kB
+@@psi
+some avg10=0.00 avg60=0.00 avg300=0.00 total=10822
+full avg10=0.00 avg60=0.00 avg300=0.00 total=2414
+@@loadavg
+1.21 1.51 1.82 1/1971 538081
+@@uptime
+452592.16 592717.11
+@@nvidia
+@@top
+15.4 systemd
+ 7.9 php
+ 5.3 dockerd
+ 4.8 containerd
+ 1.3 next-server (v1
+ 1.0 traefik
+@@df
+/dev/sda1         46212176 29684040  16511752      65% /
+@@end

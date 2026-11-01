@@ -5,6 +5,7 @@ const { app, safeStorage } = require('electron');
 const { sessionFromSecret } = require('../lib/oauth.cjs');
 const { resolveDefaultId } = require('../lib/tray.cjs');
 const { emptyAccountState, parseAccountFile, legacyAccountFiles } = require('../lib/account-file.cjs');
+const { normalizeComputers } = require('../lib/computer-list.cjs');
 
 function dataFile() {
   return path.join(app.getPath('userData'), 'accounts.json');
@@ -122,6 +123,17 @@ function updateSettings(patch) {
   return state.settings;
 }
 
+// Added computers: names and SSH targets only, kept with the other settings.
+function listComputers() {
+  return normalizeComputers(readState().settings.computers);
+}
+
+function saveComputers(list) {
+  const computers = normalizeComputers(list);
+  updateSettings({ computers });
+  return computers;
+}
+
 function fingerprint(secret) {
   return crypto.createHash('sha256').update(sessionFromSecret(secret).token).digest('hex');
 }
@@ -234,6 +246,8 @@ module.exports = {
   listPublic,
   getSettings,
   updateSettings,
+  listComputers,
+  saveComputers,
   addAccount,
   updateAccount,
   setDefaultAccount,

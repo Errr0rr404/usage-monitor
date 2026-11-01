@@ -137,6 +137,12 @@ const state = {
   refreshMinutes: 5,
   alarmSound: true,
   layout: 'stacked',
+  tab: 'ai',
+  computers: [],
+  readings: {},
+  sshHosts: [],
+  computerForm: null,
+  pendingComputerRemove: null,
 };
 
 const board = document.getElementById('board');
@@ -159,6 +165,7 @@ const keyField = document.getElementById('key-field');
 const secretInput = document.getElementById('secret');
 const importKeyButton = document.getElementById('import-key');
 const updatedButton = document.getElementById('updated');
+const tabButtons = [...document.querySelectorAll('[role="tab"][data-tab]')];
 const resetAccounts = new Map();
 let signInRequest = 0;
 let sizeRequest = 0;
@@ -431,7 +438,7 @@ function lastUpdated() {
 
 function renderUpdated() {
   const last = lastUpdated();
-  updatedButton.hidden = state.formOpen || (!state.refreshing && last == null);
+  updatedButton.hidden = state.formOpen || state.tab !== 'ai' || (!state.refreshing && last == null);
   updatedButton.disabled = state.refreshing;
   const text = state.refreshing ? 'Updating…' : last == null ? '' : `Updated ${agoPhrase(Math.max(0, Date.now() - last))}`;
   if (updatedButton.textContent !== text) updatedButton.textContent = text;
@@ -546,7 +553,7 @@ function renderChrome() {
   document.getElementById('pin-note').textContent = state.platform === 'darwin'
     ? 'Stays above other windows, on every desktop.'
     : 'Stays above other windows.';
-  compactButton.textContent = state.compact ? 'Show gauges' : 'Compact';
+  compactButton.textContent = state.compact ? (state.tab === 'computers' ? 'Show rings' : 'Show gauges') : 'Compact';
   document.querySelectorAll('#menu [data-layout]').forEach((button) => {
     button.setAttribute('aria-pressed', button.dataset.layout === state.layout ? 'true' : 'false');
   });
@@ -554,8 +561,7 @@ function renderChrome() {
     ? 'Accounts sit in a row. Scroll sideways for the rest.'
     : 'Accounts stack down the window.';
   document.documentElement.dataset.layout = state.layout;
-  refreshButton.textContent = state.refreshing ? 'Refreshing' : 'Refresh';
-  refreshButton.disabled = state.refreshing;
+  refreshButton.textContent = state.refreshing && state.tab === 'ai' ? 'Refreshing' : 'Refresh';
   const chosen = PROVIDERS.find((item) => item.id === state.provider) || PROVIDERS[0];
   const keyed = savesKey(chosen);
   saveButton.disabled = state.saving;
@@ -570,12 +576,25 @@ function renderChrome() {
   secretInput.disabled = state.saving;
   secretInput.placeholder = chosen.placeholder || '';
   renderUpdated();
+  const onComputers = state.tab === 'computers';
+  const sheetOpen = state.formOpen || Boolean(state.computerForm);
   form.hidden = !state.formOpen;
-  board.hidden = state.formOpen;
+  board.hidden = state.formOpen || onComputers;
+  computersBoard.hidden = !onComputers || Boolean(state.computerForm);
   footerForm.hidden = !state.formOpen;
-  menu.hidden = !state.menuOpen || state.formOpen;
-  settingsButton.setAttribute('aria-expanded', state.menuOpen && !state.formOpen ? 'true' : 'false');
-  settingsButton.hidden = state.formOpen;
+  renderComputerForm();
+  menu.hidden = !state.menuOpen || sheetOpen;
+  settingsButton.setAttribute('aria-expanded', state.menuOpen && !sheetOpen ? 'true' : 'false');
+  settingsButton.hidden = sheetOpen;
+  tabButtons.forEach((button) => {
+    const selected = button.dataset.tab === state.tab;
+    button.setAttribute('aria-selected', selected ? 'true' : 'false');
+    button.tabIndex = selected ? 0 : -1;
+    button.disabled = sheetOpen;
+  });
+  document.getElementById('add').hidden = onComputers;
+  document.getElementById('add-computer').hidden = !onComputers;
+  refreshButton.disabled = !onComputers && state.refreshing;
   const selected = PROVIDERS.find((item) => item.id === state.provider) || PROVIDERS[0];
   help.textContent = state.saving && state.hint ? state.hint : selected.help;
   deviceCode.hidden = !state.deviceCode;
@@ -608,8 +627,38 @@ function renderChrome() {
 function render() {
   renderChrome();
   renderBoard();
+  if (state.tab === 'computers') renderComputers();
   syncCompactSize();
 }
+
+async function chooseTab(next) {
+  const tab = next === 'computers' ? 'computers' : 'ai';
+  if (tab === state.tab || state.formOpen || state.computerForm) return;
+  state.tab = tab;
+  state.menuOpen = false;
+  state.pendingRemove = null;
+  state.pendingComputerRemove = null;
+  document.documentElement.dataset.tab = tab;
+  render();
+  syncComputersLive();
+  try {
+    await desk.setTab(tab);
+  } catch {
+    // The tab still switches; it just is not remembered.
+  }
+}
+
+document.querySelector('.tabs').addEventListener('click', (event) => {
+  const button = event.target.closest('[data-tab]');
+  if (button) chooseTab(button.dataset.tab);
+});
+
+document.querySelector('.tabs').addEventListener('keydown', (event) => {
+  if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+  event.preventDefault();
+  const next = event.key === 'Home' ? 'ai' : event.key === 'End' ? 'computers' : state.tab === 'ai' ? 'computers' : 'ai';
+  chooseTab(next).then(() => tabButtons.find((button) => button.dataset.tab === state.tab)?.focus());
+});
 
 function savesKey(provider) {
   return Boolean(provider.usesKey || (provider.optionalKey && secretInput.value.trim()));
@@ -661,7 +710,7 @@ async function refresh() {
 
 function measureCompactHeight() {
   const panel = document.getElementById('panel');
-  const boardEl = document.getElementById('board');
+  const boardEl = state.tab === 'computers' ? computersBoard : document.getElementById('board');
   const previous = {
     panelHeight: panel.style.height,
     boardFlex: boardEl.style.flex,
@@ -683,7 +732,7 @@ async function syncCompactSize() {
   const request = ++sizeRequest;
   // Settings, sign-in, and reset notices need the regular window height.
   // The compact board returns to its previous size when they close.
-  const compact = state.compact && !state.formOpen && !state.menuOpen && alarm.hidden;
+  const compact = state.compact && !state.formOpen && !state.computerForm && !state.menuOpen && alarm.hidden;
   if (compact) {
     await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
   }
@@ -798,9 +847,15 @@ document.getElementById('test-alarm').addEventListener('click', () => {
 
 document.getElementById('hide').addEventListener('click', () => desk.hide());
 
+function refreshTab() {
+  if (state.tab === 'computers') desk.refreshComputers().catch(() => {});
+  else refresh();
+}
+
 document.getElementById('refresh').addEventListener('click', () => {
   state.menuOpen = false;
-  refresh();
+  renderChrome();
+  refreshTab();
 });
 
 document.getElementById('compact').addEventListener('click', async () => {
@@ -987,6 +1042,10 @@ document.addEventListener('keydown', (event) => {
     cancelForm();
     return;
   }
+  if (event.key === 'Escape' && state.computerForm) {
+    closeComputerForm();
+    return;
+  }
   if (event.key === 'Escape' && !alarm.hidden) {
     dismissResetAlarm();
     return;
@@ -998,7 +1057,7 @@ document.addEventListener('keydown', (event) => {
   }
   if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'r') {
     event.preventDefault();
-    refresh();
+    refreshTab();
   }
 });
 
@@ -1087,11 +1146,16 @@ async function init() {
   state.refreshMinutes = Number.isFinite(windowState.refreshMinutes) ? windowState.refreshMinutes : 5;
   state.alarmSound = windowState.alarmSound !== false;
   state.layout = windowState.layout === 'sideways' ? 'sideways' : 'stacked';
+  state.tab = windowState.tab === 'computers' ? 'computers' : 'ai';
+  document.documentElement.dataset.tab = state.tab;
   document.documentElement.dataset.theme = state.theme;
   document.documentElement.dataset.platform = state.platform;
   document.documentElement.dataset.layout = state.layout;
   renderChoices();
+  initComputers();
   render();
+  syncComputersLive();
+  loadComputers();
   await refresh();
   if (windowState.form) openForm(windowState.form);
   scheduleRefresh();
