@@ -56,7 +56,7 @@ Services with a China site (Kimi API, Z.ai, SiliconFlow, MiniMax) try the global
 
 The header has two tabs: AI usage, and Computers. Usage Monitor remembers the one you left open. The menu bar and tray icon keep showing the starred AI account on either tab.
 
-![The Computers tab with this Mac, a Mac mini, an iMac, a netcup server, and an Oracle box](docs/computers.png)
+![The Computers tab with this Mac, a Mac mini, an iMac, and a netcup server](docs/computers.png)
 
 Each computer gets four rings in the same style as the AI cards: CPU, RAM, GPU, and disk, each filled with how much is in use. A ring turns orange with under 15 percent headroom and red under 5 percent. On a Mac the RAM ring follows macOS memory pressure instead, because macOS keeps memory full on purpose. Under the rings: uptime, load average, memory pressure, and the three busiest processes.
 
