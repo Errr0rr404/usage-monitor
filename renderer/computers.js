@@ -178,19 +178,20 @@ function renderComputerCompact(computer) {
   const status = state.readings[computer.id] || {};
   const reading = status.reading;
   let text = 'Checking…';
+  let detail = '';
   if (status.error && status.failures > 0) text = 'Offline';
   else if (reading) {
-    const parts = [];
-    if (Number.isFinite(reading.cpu?.percent)) parts.push(`CPU ${Math.round(reading.cpu.percent)}`);
-    if (Number.isFinite(reading.memory?.percent)) parts.push(`RAM ${Math.round(reading.memory.percent)}`);
-    if (Number.isFinite(reading.gpu?.percent)) parts.push(`GPU ${Math.round(reading.gpu.percent)}`);
-    if (Number.isFinite(reading.disk?.percent)) parts.push(`Disk ${Math.round(reading.disk.percent)}`);
-    text = parts.join(' · ') || 'No reading';
+    // GPU stays out of the one-line view so every row fits the same three
+    // values; it is still in the row's hover text and in the rings.
+    const part = (label, value) => (Number.isFinite(value) ? `${label} ${Math.round(value)}` : '');
+    text = [part('CPU', reading.cpu?.percent), part('RAM', reading.memory?.percent), part('Disk', reading.disk?.percent)]
+      .filter(Boolean).join(' · ') || 'No reading';
+    detail = [text, part('GPU', reading.gpu?.percent)].filter(Boolean).join(' · ');
   }
   const worst = reading && !(status.error && status.failures > 0)
     ? [useTone(reading.cpu?.percent), memoryTone(reading.memory), useTone(reading.disk?.percent)].find((tone) => tone !== 'ok')
     : (status.error && status.failures > 0 ? 'empty' : '');
-  return `<div class="compact-row"><strong title="${esc(computer.local ? 'This computer' : computer.target)}">${esc(computer.name)}</strong><span class="${worst ? `tone-${worst}` : ''}" title="${esc(status.error || text)}">${esc(text)}</span></div>`;
+  return `<div class="compact-row"><strong title="${esc(computer.local ? 'This computer' : computer.target)}">${esc(computer.name)}</strong><span class="${worst ? `tone-${worst}` : ''}" title="${esc(status.error || detail || text)}">${esc(text)}</span></div>`;
 }
 
 function renderComputers() {

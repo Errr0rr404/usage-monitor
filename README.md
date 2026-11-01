@@ -79,7 +79,7 @@ Choose Add computer from the settings menu (or the button under this computer). 
 - To keep 5-second refreshes light, one SSH connection per computer is shared for two minutes, through a private socket in `/tmp`. It is closed when Usage Monitor quits.
 - A computer that cannot be reached shows Offline with the reason, and keeps retrying: after 5 seconds, then 10, 20, and so on, up to every 5 minutes.
 
-Rename, edit, reorder, and remove added computers with the buttons on each card. Compact mode shows one line per computer.
+Rename, edit, reorder, and remove added computers with the buttons on each card. Compact mode shows one line per computer with CPU, RAM, and disk; hover a line to see GPU too.
 
 ## Download
 
