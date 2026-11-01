@@ -19,6 +19,7 @@ contextBridge.exposeInMainWorld('desk', {
   setTransparency: (percent) => ipcRenderer.invoke('window:transparency', percent),
   setCompact: (payload) => ipcRenderer.invoke('window:compact', payload),
   setLayout: (layout) => ipcRenderer.invoke('window:layout', layout),
+  setView: (view) => ipcRenderer.invoke('window:view', view),
   hide: () => ipcRenderer.invoke('window:hide'),
   setTab: (tab) => ipcRenderer.invoke('window:tab', tab),
   computers: () => ipcRenderer.invoke('computers:state'),

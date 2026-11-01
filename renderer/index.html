@@ -57,6 +57,12 @@
       <button type="button" data-layout="sideways" aria-pressed="false">Sideways</button>
     </div>
     <p class="menu-note" id="layout-note">Accounts stack down the window.</p>
+    <p class="menu-label">View</p>
+    <div class="themes" role="group" aria-label="View">
+      <button type="button" data-view="tabs" aria-pressed="true">Tabs</button>
+      <button type="button" data-view="split" aria-pressed="false">Side by side</button>
+    </div>
+    <p class="menu-note" id="view-note">AI usage and Computers each get a tab.</p>
     <p class="menu-label">Refresh every</p>
     <div class="themes" role="group" aria-label="Refresh every">
       <button type="button" data-refresh="1" aria-pressed="false">1m</button>
@@ -80,8 +86,16 @@
     <p class="menu-note" id="opacity-note">Solid. Drag right to see through the window.</p>
   </div>
 
-    <div id="board" class="board" role="tabpanel" aria-labelledby="tab-ai" aria-live="polite"></div>
-    <div id="computers" class="board" role="tabpanel" aria-labelledby="tab-computers" hidden></div>
+    <div id="boards" class="boards">
+      <section class="column" id="column-ai">
+        <h2 class="column-heading" id="heading-ai">AI usage</h2>
+        <div id="board" class="board" role="tabpanel" aria-labelledby="tab-ai" aria-live="polite"></div>
+      </section>
+      <section class="column" id="column-computers" hidden>
+        <h2 class="column-heading" id="heading-computers">Computers</h2>
+        <div id="computers" class="board" role="tabpanel" aria-labelledby="tab-computers"></div>
+      </section>
+    </div>
 
     <form id="computer-form" class="sheet" hidden>
       <h2 class="sheet-title" id="computer-form-title">Add a computer</h2>
