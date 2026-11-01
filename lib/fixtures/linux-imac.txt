@@ -1,0 +1,39 @@
+@@os
+Linux
+x86_64
+@@host
+imac
+@@ncpu
+4
+@@model
+ Intel(R) Core(TM) i5-6500 CPU @ 3.20GHz
+@@stat1
+cpu  6452412 63864948 10317689 53704653 45057 0 26369 0 0 0
+@@stat2
+cpu  6452427 63864948 10317691 53705036 45057 0 26369 0 0 0
+@@meminfo
+MemTotal:       24500104 kB
+MemFree:         5063996 kB
+MemAvailable:   20294560 kB
+Buffers:         1287044 kB
+Cached:         12401936 kB
+SwapTotal:       8388604 kB
+SwapFree:        8284184 kB
+@@psi
+some avg10=0.00 avg60=0.00 avg300=0.00 total=6905340
+full avg10=0.00 avg60=0.00 avg300=0.00 total=5707515
+@@loadavg
+0.11 1.05 1.27 1/868 3371485
+@@uptime
+337688.17 537050.37
+@@nvidia
+@@top
+ 6.9 claude
+ 1.7 claude
+ 1.3 claude
+ 1.1 claude
+ 1.1 claude
+ 1.1 claude
+@@df
+/dev/sdb2        243985756 68948792 162570380      30% /
+@@end

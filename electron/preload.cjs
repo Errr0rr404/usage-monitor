@@ -20,6 +20,19 @@ contextBridge.exposeInMainWorld('desk', {
   setCompact: (payload) => ipcRenderer.invoke('window:compact', payload),
   setLayout: (layout) => ipcRenderer.invoke('window:layout', layout),
   hide: () => ipcRenderer.invoke('window:hide'),
+  setTab: (tab) => ipcRenderer.invoke('window:tab', tab),
+  computers: () => ipcRenderer.invoke('computers:state'),
+  setComputersLive: (live) => ipcRenderer.invoke('computers:active', live),
+  refreshComputers: (id) => ipcRenderer.invoke('computers:refresh', id),
+  addComputer: (payload) => ipcRenderer.invoke('computers:add', payload),
+  updateComputer: (id, patch) => ipcRenderer.invoke('computers:update', id, patch),
+  removeComputer: (id) => ipcRenderer.invoke('computers:remove', id),
+  moveComputer: (id, delta) => ipcRenderer.invoke('computers:move', id, delta),
+  onComputers: (callback) => {
+    const listener = (_event, payload) => callback(payload);
+    ipcRenderer.on('computers:update', listener);
+    return () => ipcRenderer.removeListener('computers:update', listener);
+  },
   onAuthHint: (callback) => {
     const listener = (_event, hint) => callback(hint);
     ipcRenderer.on('auth:hint', listener);

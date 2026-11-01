@@ -1,12 +1,15 @@
 const { app, BrowserWindow, Tray, Menu, dialog, ipcMain, nativeImage, Notification, clipboard } = require('electron');
 const { spawn } = require('child_process');
+const crypto = require('crypto');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const store = require('./store.cjs');
 const { fetchUsage, KEY_PROVIDERS } = require('../lib/fetch.cjs');
 const { cleanSecret, extractCodexAuth, extractGrokAuth, extractOpenCodeKey } = require('../lib/parse.cjs');
-const { previewState } = require('../lib/preview.cjs');
+const { previewState, previewComputers, previewComputerReading } = require('../lib/preview.cjs');
+const { addComputer, updateComputer, removeComputer, moveComputer } = require('../lib/computer-list.cjs');
+const { createWatch, checkComputer, sshHosts, closeConnections } = require('./computers.cjs');
 const { collectResets, describeResets, resetChimeWav } = require('../lib/reset-alarm.cjs');
 const { trayPng } = require('../lib/tray-icon.cjs');
 const { remainingLeft, trayDisplay, providerName } = require('../lib/tray.cjs');
@@ -67,7 +70,58 @@ let lastResult = null;
 let signInAttempt = 0;
 let alarmSound = true;
 let pinned = true;
+let tab = 'ai';
+let computersLive = false;
+let watch = null;
 const limitState = new Map();
+
+function normalizeTab(value) {
+  return value === 'computers' ? 'computers' : 'ai';
+}
+
+// Live means someone is looking at the Computers tab: read every 5 seconds.
+// Otherwise the readings only tick over once a minute.
+function syncComputersActive() {
+  if (!watch) return;
+  watch.setActive(computersLive && tab === 'computers' && Boolean(win) && !win.isDestroyed() && win.isVisible());
+}
+
+// --live-computers=mini,me@box reads real computers in preview mode, so a
+// screenshot can show them without touching the saved list.
+function liveComputerTargets() {
+  const flag = process.argv.find((arg) => arg.startsWith('--live-computers='));
+  if (!flag) return null;
+  return flag.slice('--live-computers='.length).split(',').map((target) => target.trim()).filter(Boolean)
+    .map((target, index) => ({ id: `live-${index}`, name: target.replace(/^.*@/, '').replace(/\.local$/, ''), target, port: null }));
+}
+
+function savedComputers() {
+  if (!preview) return store.listComputers();
+  return liveComputerTargets() || previewComputers();
+}
+
+function createComputerWatch() {
+  const canned = preview && !liveComputerTargets();
+  watch = createWatch({
+    list: () => {
+      try {
+        return savedComputers();
+      } catch {
+        return [];
+      }
+    },
+    send: (payload) => {
+      if (win && !win.isDestroyed()) win.webContents.send('computers:update', payload);
+    },
+    // Screenshots go into a public README, so preview never shows the real host name.
+    localName: preview ? 'MacBook Pro' : '',
+    ...(canned ? {
+      readLocalFn: async () => previewComputerReading({ local: true }),
+      readRemoteFn: async (computer) => previewComputerReading(computer),
+    } : {}),
+  });
+  watch.start();
+}
 
 function pruneLimitState(accountId) {
   for (const key of [...limitState.keys()]) {
@@ -203,6 +257,7 @@ function createWindow() {
   const settings = preview ? { pinned: true, bounds: null } : store.getSettings();
   alarmSound = settings.alarmSound !== false;
   pinned = settings.pinned !== false;
+  tab = normalizeTab(process.argv.includes('--computers') ? 'computers' : settings.tab);
   const shot = process.argv.includes('--shot');
   layout = normalizeLayout(process.argv.includes('--sideways') ? 'sideways' : settings.layout);
   stackedBounds = finiteBox(settings.bounds);
@@ -262,7 +317,15 @@ function createWindow() {
   };
   win.loadFile(path.join(__dirname, '../renderer/index.html'), { query });
   win.once('ready-to-show', () => {
-    win.show();
+    // A screenshot run shows the window fully see-through and without focus,
+    // so nothing pops up while it works. (A window that is never shown keeps
+    // Electron from exiting on macOS.)
+    if (shot) {
+      win.setOpacity(0);
+      win.showInactive();
+    } else {
+      win.show();
+    }
     if (demoAlarm) showDemoAlarm();
   });
   win.on('close', (event) => {
@@ -270,6 +333,8 @@ function createWindow() {
     event.preventDefault();
     hideWindow();
   });
+  win.on('show', syncComputersActive);
+  win.on('hide', syncComputersActive);
   win.on('move', persistBounds);
   win.on('resize', () => {
     if (!compact) persistBounds();
@@ -277,10 +342,21 @@ function createWindow() {
 
   if (process.argv.includes('--shot')) {
     win.webContents.once('did-finish-load', async () => {
-      await new Promise((resolve) => setTimeout(resolve, process.argv.includes('--compact') ? 1600 : 900));
-      const image = await win.webContents.capturePage();
-      fs.writeFileSync(path.join(os.tmpdir(), 'usage-preview.png'), image.toPNG());
-      app.exit(0);
+      const live = Boolean(liveComputerTargets());
+      const settle = process.argv.includes('--compact') ? 1600 : 900;
+      await new Promise((resolve) => setTimeout(resolve, live ? 12000 : settle + (tab === 'computers' ? 1200 : 0)));
+      let code = 0;
+      try {
+        const image = await win.webContents.capturePage();
+        const out = process.argv.find((arg) => arg.startsWith('--shot-file='));
+        fs.writeFileSync(out ? out.slice('--shot-file='.length) : path.join(os.tmpdir(), 'usage-preview.png'), image.toPNG());
+      } catch (error) {
+        console.error(error);
+        code = 1;
+      }
+      if (watch) watch.stop();
+      closeConnections();
+      app.exit(code);
     });
   }
 }
@@ -465,7 +541,127 @@ ipcMain.handle('window:state', () => ({
   transparency: normalizeTransparency(store.getSettings().transparency),
   platform: process.platform,
   layout,
+  tab,
 }));
+
+ipcMain.handle('window:tab', (_event, value) => {
+  tab = normalizeTab(value);
+  if (!preview) {
+    try {
+      store.updateSettings({ tab });
+    } catch {
+      // The tab still switches; it just is not remembered.
+    }
+  }
+  syncComputersActive();
+  return tab;
+});
+
+ipcMain.handle('computers:state', () => {
+  let hosts = [];
+  try {
+    hosts = sshHosts();
+  } catch {
+    hosts = [];
+  }
+  return {
+    computers: watch ? watch.computers() : [],
+    readings: watch ? watch.snapshot() : {},
+    sshHosts: hosts.map((host) => ({ alias: host.alias, hostName: host.hostName, user: host.user, port: host.port })),
+  };
+});
+
+ipcMain.handle('computers:active', (_event, live) => {
+  computersLive = Boolean(live);
+  syncComputersActive();
+  return computersLive;
+});
+
+ipcMain.handle('computers:refresh', (_event, id) => {
+  if (watch) watch.refreshNow(typeof id === 'string' ? id : undefined);
+  return true;
+});
+
+function publishComputers() {
+  if (watch) watch.publish();
+}
+
+// A new or changed address is read once before it is saved, so a typo shows
+// here instead of as an offline card. Save anyway keeps a computer that is
+// asleep right now.
+async function reachable(computer, force) {
+  if (force) return { ok: true };
+  const reading = await checkComputer(computer);
+  if (reading.ok) return { ok: true };
+  return { ok: false, unreachable: true, error: reading.error };
+}
+
+ipcMain.handle('computers:add', async (_event, payload) => {
+  if (preview) return { ok: false, error: 'Preview mode does not save computers.' };
+  const draft = addComputer(store.listComputers(), payload || {}, () => crypto.randomUUID());
+  if (!draft.ok) return { ok: false, error: draft.error };
+  const check = await reachable(draft.computer, payload?.force);
+  if (!check.ok) return check;
+  // Read again: the list may have changed while the check ran.
+  const saved = addComputer(store.listComputers(), draft.computer, () => draft.computer.id);
+  if (!saved.ok) return { ok: false, error: saved.error };
+  try {
+    store.saveComputers(saved.computers);
+  } catch (error) {
+    return { ok: false, error: error.message || 'The computer could not be saved.' };
+  }
+  watch.refreshNow(saved.computer.id);
+  publishComputers();
+  return { ok: true, computer: saved.computer };
+});
+
+ipcMain.handle('computers:update', async (_event, id, patch) => {
+  if (preview) return { ok: false, error: 'Preview mode does not save computers.' };
+  const before = store.listComputers().find((computer) => computer.id === id);
+  const draft = updateComputer(store.listComputers(), id, patch || {});
+  if (!draft.ok) return { ok: false, error: draft.error };
+  const moved = !before || before.target !== draft.computer.target || before.port !== draft.computer.port;
+  if (moved) {
+    const check = await reachable(draft.computer, patch?.force);
+    if (!check.ok) return check;
+  }
+  const saved = updateComputer(store.listComputers(), id, draft.computer);
+  if (!saved.ok) return { ok: false, error: saved.error };
+  try {
+    store.saveComputers(saved.computers);
+  } catch (error) {
+    return { ok: false, error: error.message || 'The computer could not be saved.' };
+  }
+  if (moved) {
+    watch.forget(id);
+    watch.refreshNow(id);
+  }
+  publishComputers();
+  return { ok: true, computer: saved.computer };
+});
+
+ipcMain.handle('computers:remove', (_event, id) => {
+  if (preview) return { ok: false, error: 'Preview mode does not save computers.' };
+  try {
+    store.saveComputers(removeComputer(store.listComputers(), id));
+  } catch (error) {
+    return { ok: false, error: error.message || 'The computer could not be removed.' };
+  }
+  watch.forget(id);
+  publishComputers();
+  return { ok: true };
+});
+
+ipcMain.handle('computers:move', (_event, id, delta) => {
+  if (preview) return { ok: false, error: 'Preview mode does not save computers.' };
+  try {
+    store.saveComputers(moveComputer(store.listComputers(), id, delta));
+  } catch (error) {
+    return { ok: false, error: error.message || 'The order could not be saved.' };
+  }
+  publishComputers();
+  return { ok: true };
+});
 
 const REFRESH_MINUTES = new Set([0, 1, 5, 15, 30]);
 
@@ -596,7 +792,7 @@ function playResetChime() {
 function presentResetAlarm(events) {
   if (!events.length || !win || win.isDestroyed()) return;
   const described = describeResets(events);
-  if (!win.isVisible()) win.showInactive();
+  if (!win.isVisible() && !process.argv.includes('--shot')) win.showInactive();
   if (alarmSound) playResetChime();
   win.webContents.send('usage:reset-alarm', described);
 }
@@ -762,6 +958,7 @@ app.whenReady().then(() => {
   hideDock();
   createTray();
   createWindow();
+  createComputerWatch();
   app.on('activate', () => {
     if (!win) createWindow();
     else showWindow();
@@ -773,5 +970,7 @@ app.on('window-all-closed', () => {
 });
 
 app.on('before-quit', () => {
+  if (watch) watch.stop();
+  closeConnections();
   if (win) win.removeAllListeners('close');
 });

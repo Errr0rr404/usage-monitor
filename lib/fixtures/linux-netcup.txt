@@ -1,0 +1,39 @@
+@@os
+Linux
+x86_64
+@@host
+netcup-box
+@@ncpu
+12
+@@model
+ AMD EPYC-Genoa Processor
+@@stat1
+cpu  96417675 179545726 94748449 1078699544 988200 0 17507948 1668012 0 0
+@@stat2
+cpu  96417726 179545726 94748479 1078700661 988200 0 17507949 1668013 0 0
+@@meminfo
+MemTotal:       32869552 kB
+MemFree:         3345012 kB
+MemAvailable:   24871724 kB
+Buffers:         1378508 kB
+Cached:         17675280 kB
+SwapTotal:             0 kB
+SwapFree:              0 kB
+@@psi
+some avg10=0.00 avg60=0.00 avg300=0.00 total=147716153
+full avg10=0.00 avg60=0.00 avg300=0.00 total=135511633
+@@loadavg
+0.99 0.97 1.01 1/1728 4120397
+@@uptime
+1238493.34 10787006.67
+@@nvidia
+@@top
+ 7.5 dockerd
+ 5.7 containerd
+ 5.6 node
+ 4.5 postgres
+ 4.1 postgres
+ 2.3 node
+@@df
+/dev/vda4        527141580 233201000 272410608      47% /
+@@end

@@ -8,11 +8,11 @@
     "type": "git",
     "url": "https://github.com/Errr0rr404/usage-monitor.git"
   },
-  "description": "Floating desktop meter for 17 AI services: Grok, MiniMax, Codex, Claude, Cursor, Copilot, Gemini, Muse, OpenCode, DeepSeek, OpenRouter, Kimi Code, Kimi API, Z.ai, Vercel AI Gateway, Poe, and SiliconFlow.",
+  "description": "Floating desktop meter for 17 AI services: Grok, MiniMax, Codex, Claude, Cursor, Copilot, Gemini, Muse, OpenCode, DeepSeek, OpenRouter, Kimi Code, Kimi API, Z.ai, Vercel AI Gateway, Poe, and SiliconFlow. Also shows CPU, RAM, GPU, and disk for this computer and others over SSH.",
   "main": "electron/main.cjs",
   "scripts": {
     "start": "electron .",
-    "test": "node --test lib/parse.test.cjs lib/account-file.test.cjs lib/layout.test.cjs lib/fetch.test.cjs lib/browser-login.test.cjs lib/login-capture.test.cjs lib/oauth.test.cjs lib/tray.test.cjs lib/tray-icon.test.cjs lib/reset-alarm.test.cjs",
+    "test": "node --test lib/parse.test.cjs lib/account-file.test.cjs lib/layout.test.cjs lib/fetch.test.cjs lib/browser-login.test.cjs lib/login-capture.test.cjs lib/oauth.test.cjs lib/tray.test.cjs lib/tray-icon.test.cjs lib/reset-alarm.test.cjs lib/computers.test.cjs lib/computer-list.test.cjs lib/computer-watch.test.cjs",
     "dist": "electron-builder --publish never",
     "dist:mac": "electron-builder --mac dmg zip --arm64 --x64 --publish never && node scripts/notarize-mac-disk-images.cjs",
     "dist:win": "electron-builder --win nsis --x64 --ia32 --publish never"
@@ -31,7 +31,8 @@
       "build/icon.png",
       "build/icon.ico",
       "package.json",
-      "!lib/**/*.test.cjs"
+      "!lib/**/*.test.cjs",
+      "!lib/fixtures/**"
     ],
     "mac": {
       "category": "public.app-category.utilities",

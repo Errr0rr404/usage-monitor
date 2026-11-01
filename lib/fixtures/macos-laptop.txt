@@ -1,0 +1,64 @@
+@@os
+Darwin
+arm64
+@@host
+studio-laptop.local
+@@ncpu
+10
+@@model
+Apple M1 Pro
+@@memsize
+34359738368
+@@vmstat
+Mach Virtual Memory Statistics: (page size of 16384 bytes)
+Pages free:                                     4207.
+Pages active:                                 429438.
+Pages inactive:                               425939.
+Pages speculative:                              1694.
+Pages throttled:                                   0.
+Pages wired down:                             230921.
+Pages purgeable:                                   0.
+"Translation faults":                    34215252559.
+Pages copy-on-write:                      2912191979.
+Pages zero filled:                        8078738207.
+Pages reactivated:                        9624509666.
+Pages purged:                              139953971.
+File-backed pages:                            241821.
+Anonymous pages:                              615250.
+Pages stored in compressor:                  1840483.
+Pages occupied by compressor:                 952795.
+Decompressions:                          10507489011.
+Compressions:                            11298296158.
+Pageins:                                   703428410.
+Pageouts:                                     609250.
+Swapins:                                    42498237.
+Swapouts:                                   47222681.
+@@pressure
+2
+@@memfree
+41
+@@load
+{ 278.30 234.38 180.67 }
+@@boottime
+{ sec = 1793224142, usec = 228306 } Wed Oct 28 17:49:02 2026
+@@now
+1793499788
+@@cpu
+      cpu    load average
+ us sy id   1m   5m   15m
+ 35 29 36  278.30 234.38 180.67
+ 32 63  5  270.59 233.51 180.68
+@@gpu
+      "PerformanceStatistics" = {"In use system memory (driver)"=0,"Alloc system memory"=1841086464,"Tiler Utilization %"=19,"recoveryCount"=0,"lastRecoveryTime"=0,"Renderer Utilization %"=18,"TiledSceneBytes"=950272,"Device Utilization %"=19,"SplitSceneCount"=0,"Allocated PB Size"=70647808,"In use system memory"=521240576}
+      "model" = "Apple M1 Pro"
+      "IOClass" = "AGXAcceleratorG13X"
+@@top
+ 47.1 /System/Library/PrivateFrameworks/SkyLight.framework/Resources/WindowServer
+ 31.8 /Users/me/Applications/Claude.app/Contents/Frameworks/Claude Helper.app/Contents/MacOS/Claude Helper
+ 24.5 npm exec interactive-drawer --stdio
+ 22.4 /Users/me/Applications/Claude.app/Contents/Frameworks/Claude Helper (Renderer).app/Contents/MacOS/Claude Helper (Renderer)
+ 22.4 /opt/homebrew/opt/git/libexec/git-core/git
+ 19.0 /opt/homebrew/opt/git/libexec/git-core/git
+@@df
+/dev/disk4s1   951788208 906477860  14367256    99%    /System/Volumes/Data
+@@end
