@@ -48,6 +48,7 @@
 
   <div id="menu" hidden role="menu" aria-label="Settings">
     <button type="button" id="add" role="menuitem">Add account</button>
+    <button type="button" id="add-local" role="menuitem">Add logins from this computer</button>
     <button type="button" id="add-computer" role="menuitem" hidden>Add computer</button>
     <button type="button" id="refresh" role="menuitem">Refresh</button>
     <button type="button" id="compact" role="menuitem">Compact</button>
@@ -127,6 +128,12 @@
     </footer>
 
     <form id="form" hidden>
+      <div class="local-logins">
+        <button type="button" id="local-import" class="import-key">Add logins from this computer</button>
+        <p class="local-note" id="local-note">Adds every login Claude Code, Codex, Grok, cursor-agent, Antigravity and OpenCode already keep here. Each is checked once; ones already on the board are skipped.</p>
+        <div id="local-report" class="local-report" role="status" aria-live="polite" hidden></div>
+        <button type="button" id="local-folder" class="import-key" hidden>Look in another folder…</button>
+      </div>
       <fieldset>
         <legend class="sr-only">Service</legend>
         <div id="provider-choices">
