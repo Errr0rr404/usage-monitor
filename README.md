@@ -31,6 +31,23 @@ Sessions are locked with the operating system: the macOS keychain, or Windows DP
 
 Gemini signs in through Antigravity and shows every model it meters. The shared Claude & GPT pool shows its week and 5 hours (marked paused while Google switches the 5 hours off), and the Gemini models follow, grouped into one row when they share a quota. Each pooled row lists its models.
 
+### Logins already on this computer
+
+**Add logins from this computer** (in the settings menu and at the top of the add sheet) adds every login the command-line tools already keep here, checks each once, skips the ones already on the board, and says what it added, what was already there, and what it could not use and why.
+
+| Tool | Where it looks |
+| --- | --- |
+| Claude Code | The macOS keychain (`Claude Code-credentials`), else `~/.claude/.credentials.json`, `$CLAUDE_CONFIG_DIR`, and `~/.claude-*` |
+| Codex | `~/.codex/auth.json` (or `$CODEX_HOME`), and every Multi Codex profile on macOS |
+| Grok | `~/.grok/auth.json` |
+| cursor-agent | The macOS keychain (`cursor-access-token`), else `~/.config/cursor/auth.json` |
+| Antigravity (Gemini) | `~/.gemini/antigravity-cli/antigravity-oauth-token` |
+| OpenCode | The keys in `~/.local/share/opencode/auth.json` (not OpenRouter: that key cannot read credits) |
+
+**Look in another folder…** adds a folder to search too: a home with `.codex`, `.gemini` and so on in it, or a folder that holds one such home per account. On macOS, the system may ask once whether `security` can read a keychain item; choose Always Allow.
+
+Only the access token is kept from Claude Code, Codex, Grok and cursor-agent, so Usage Monitor never renews their logins and never signs those tools out. When one stops working, the card reads the tool's current login again. A token from `claude setup-token` cannot be used: Anthropic answers its usage request with a scope error (it lacks `user:profile`), so sign in with the browser for those accounts.
+
 ## API keys
 
 These services are read with an API key instead of a browser login. Paste the key, or use the key OpenCode already saved on this computer (`~/.local/share/opencode/auth.json`). Each key is read once before it is saved, so a wrong key never lands on the board. Keys are locked the same way as sessions.

@@ -130,6 +130,8 @@ const state = {
   boardError: '',
   hint: '',
   deviceCode: '',
+  // The last "Add logins from this computer" result, shown in the add sheet.
+  localImport: null,
   theme: 'ion',
   transparency: 0,
   menuOpen: false,
@@ -165,6 +167,9 @@ const alarmSoundButton = document.getElementById('alarm-sound');
 const keyField = document.getElementById('key-field');
 const secretInput = document.getElementById('secret');
 const importKeyButton = document.getElementById('import-key');
+const localImportButton = document.getElementById('local-import');
+const localFolderButton = document.getElementById('local-folder');
+const localReport = document.getElementById('local-report');
 const updatedButton = document.getElementById('updated');
 const tabButtons = [...document.querySelectorAll('[role="tab"][data-tab]')];
 const tabStrip = document.querySelector('.tabs');
@@ -599,6 +604,7 @@ function renderChrome() {
   // the credits need, so there is nothing useful to import for it.
   importKeyButton.hidden = !(chosen.usesKey || chosen.optionalKey) || chosen.id === 'openrouter';
   importKeyButton.disabled = state.saving;
+  renderLocalImport();
   secretInput.disabled = state.saving;
   secretInput.placeholder = chosen.placeholder || '';
   renderUpdated();
@@ -627,6 +633,7 @@ function renderChrome() {
     button.disabled = sheetOpen;
   });
   document.getElementById('add').hidden = !showsAi();
+  document.getElementById('add-local').hidden = !showsAi();
   document.getElementById('add-computer').hidden = !showsComputers();
   refreshButton.disabled = !showsComputers() && state.refreshing;
   const selected = PROVIDERS.find((item) => item.id === state.provider) || PROVIDERS[0];
@@ -711,6 +718,7 @@ function openForm(provider) {
 
 function closeForm() {
   state.formOpen = false;
+  state.localImport = null;
   state.formError = '';
   state.saving = false;
   state.hint = '';
@@ -1065,6 +1073,73 @@ document.getElementById('save').addEventListener('click', async () => {
   }
   closeForm();
   await refresh();
+});
+
+function localLine(item, why) {
+  const name = providerName(item.provider);
+  const label = item.label && item.label !== name ? ` · ${item.label}` : '';
+  const detail = why ? ` <span class="local-why">${esc([item.where, item.message].filter(Boolean).join(': '))}</span>` : '';
+  return `<li>${esc(name + label)}${detail}</li>`;
+}
+
+function renderLocalImport() {
+  const result = state.localImport;
+  localImportButton.disabled = state.saving;
+  localImportButton.textContent = result?.running ? 'Looking for logins…' : 'Add logins from this computer';
+  const note = 'Adds every login Claude Code, Codex, Grok, cursor-agent, Antigravity and OpenCode already keep here. Each is checked once; ones already on the board are skipped.';
+  document.getElementById('local-note').textContent = state.platform === 'darwin'
+    ? `${note} macOS may ask to let security read Claude Code and Cursor logins from your keychain: choose Always Allow.`
+    : note;
+  localFolderButton.hidden = !result || result.running;
+  localFolderButton.disabled = state.saving;
+  if (!result || result.running) {
+    localReport.hidden = true;
+    localReport.innerHTML = '';
+    return;
+  }
+  localReport.hidden = false;
+  if (!result.ok) {
+    localReport.innerHTML = `<p class="error">${esc(result.error || 'The logins on this computer could not be read.')}</p>`;
+    return;
+  }
+  const skipped = [...(result.problems || []), ...(result.notFound || [])];
+  const section = (title, items, why) => (items.length
+    ? `<p>${esc(title)}</p><ul>${items.map((item) => localLine(item, why)).join('')}</ul>`
+    : '');
+  localReport.innerHTML = `<p class="local-summary">${esc(result.summary || '')}</p>`
+    + section('Added', result.added || [], false)
+    + section('Already on the board', result.existing || [], false)
+    + section('Not found or not usable', skipped, true);
+}
+
+async function importLocal(run) {
+  if (state.saving) return;
+  const request = ++signInRequest;
+  state.saving = true;
+  state.formError = '';
+  const previous = state.localImport;
+  state.localImport = { running: true };
+  renderChrome();
+  let result;
+  try {
+    result = await run();
+  } catch {
+    result = { ok: false, error: 'The logins on this computer could not be read.' };
+  }
+  if (request !== signInRequest) return;
+  state.saving = false;
+  state.localImport = result?.canceled ? previous : result;
+  renderChrome();
+  if (result?.ok && result.added?.length) await refresh();
+}
+
+localImportButton.addEventListener('click', () => importLocal(() => desk.importLocalLogins()));
+localFolderButton.addEventListener('click', () => importLocal(() => desk.addLoginFolder()));
+
+document.getElementById('add-local').addEventListener('click', () => {
+  state.menuOpen = false;
+  openForm(state.provider);
+  importLocal(() => desk.importLocalLogins());
 });
 
 importKeyButton.addEventListener('click', async () => {

@@ -774,6 +774,22 @@ legend,
 
 .import-key[hidden] { display: none; }
 
+.local-logins { margin-bottom: 8px; }
+.local-logins .import-key:first-child { margin-top: 0; }
+
+.local-note,
+.local-report p {
+  margin: 6px 0 0;
+  color: var(--quiet);
+  font-size: 10px;
+}
+
+.local-report[hidden] { display: none; }
+.local-report .local-summary { color: inherit; font-weight: 600; }
+.local-report ul { margin: 2px 0 0; padding-left: 14px; font-size: 10px; }
+.local-report li { margin-top: 2px; overflow-wrap: anywhere; }
+.local-report .local-why { color: var(--quiet); }
+
 input {
   width: 100%;
   background: var(--field);
