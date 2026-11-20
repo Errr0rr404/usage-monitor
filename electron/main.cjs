@@ -15,6 +15,8 @@ const { trayPng } = require('../lib/tray-icon.cjs');
 const { remainingLeft, trayDisplay, providerName } = require('../lib/tray.cjs');
 const { BOX_KEYS, normalizeLayout, normalizeView, boxKey, finiteBox, openingSize, placeLayout, fitInside } = require('../lib/layout.cjs');
 const { signIn, cancelSignIn } = require('./browser-login.cjs');
+const { localLoginSources, runImport, currentLogin, sameAccount } = require('../lib/local-logins.cjs');
+const localLogins = require('./local-logins.cjs');
 
 const darwin = process.platform === 'darwin';
 const windows = process.platform === 'win32';
@@ -52,6 +54,17 @@ function opencodeKeyNames(provider, region) {
 
 function minimaxMeta(region, extra = {}) {
   return { region: region === 'cn' ? 'cn' : 'global', countsAre: 'remaining', ...extra };
+}
+
+// The OpenCode keys "Add logins from this computer" tries. An OpenRouter key
+// in OpenCode is an inference key, not the management key the credits need.
+function opencodeImportKeys() {
+  const keys = Object.entries(OPENCODE_KEY_NAMES)
+    .filter(([provider]) => provider !== 'openrouter')
+    .map(([provider, names]) => ({ provider, names, meta: {} }));
+  keys.push({ provider: 'minimax', names: MINIMAX_KEY_NAMES.global, meta: minimaxMeta('global', { keyAuth: true }) });
+  keys.push({ provider: 'minimax', names: MINIMAX_KEY_NAMES.cn, meta: minimaxMeta('cn', { keyAuth: true }) });
+  return keys;
 }
 
 app.setName('Usage Monitor');
@@ -433,10 +446,11 @@ async function refreshAll() {
         };
         return;
       }
-      const snapshot = await fetchUsage({
-        ...account,
-        meta: { ...(account.meta || {}), museMeter: store.getMeter(account.id) },
-      }, secret);
+      const reading = { ...account, meta: { ...(account.meta || {}), museMeter: store.getMeter(account.id) } };
+      let snapshot = await fetchUsage(reading, secret);
+      if (!snapshot.ok && account.meta?.source && !snapshot.secret) {
+        snapshot = (await followSource(reading, secret)) || snapshot;
+      }
       const fresh = snapshot.secret || unsavedSecrets.get(account.id);
       delete snapshot.secret;
       if (fresh) {
@@ -476,6 +490,84 @@ async function refreshAll() {
     refreshing = null;
   });
   return refreshing;
+}
+
+// A login added from another tool's file or keychain item stops working when
+// that tool renews it. Read the tool's current login and use that instead.
+// A keychain read can ask the person for permission, so a card whose tool
+// has not renewed its login yet asks again at most every 30 minutes.
+const keychainFollowed = new Map();
+const KEYCHAIN_FOLLOW_MS = 30 * 60 * 1000;
+
+async function followSource(account, secret) {
+  if (account.meta.source.kind === 'keychain') {
+    const last = keychainFollowed.get(account.id) || 0;
+    if (Date.now() - last < KEYCHAIN_FOLLOW_MS) return null;
+    keychainFollowed.set(account.id, Date.now());
+  }
+  let got;
+  try {
+    got = await localLogins.readSource(account.meta.source);
+  } catch {
+    return null;
+  }
+  if (!got?.text) return null;
+  const login = currentLogin(account, got.text, { opencodeKeys: opencodeImportKeys(), profileRaw: got.profileText });
+  if (!login || login.secret === secret) return null;
+  const snapshot = await fetchUsage(account, login.secret);
+  if (!snapshot.ok) return null;
+  // Claude Code may be signed in to another account by now.
+  if (!login.loginKey && !sameAccount(account, snapshot.identity)) return null;
+  if (!snapshot.secret) snapshot.secret = login.secret;
+  return snapshot;
+}
+
+function loginFolders() {
+  const folders = store.getSettings().loginFolders;
+  return Array.isArray(folders) ? folders.filter((folder) => typeof folder === 'string' && folder) : [];
+}
+
+let importing = null;
+
+async function importLocalLogins() {
+  const home = app.getPath('home');
+  const sources = localLoginSources({
+    home,
+    platform: process.platform,
+    env: process.env,
+    extraFolders: loginFolders(),
+    listDir: localLogins.listDir,
+    keychainServices: await localLogins.keychainServices(),
+  });
+  const identities = {};
+  for (const [id, snapshot] of Object.entries(lastResult?.snapshots || {})) {
+    if (snapshot?.identity) identities[id] = snapshot.identity;
+  }
+  return runImport({
+    sources,
+    read: localLogins.readSource,
+    check: (login) => fetchUsage({ id: 'new', provider: login.provider, label: login.label, meta: login.meta || {} }, login.secret),
+    save: (account) => store.addAccount(account),
+    refresh: (id, secret) => {
+      store.updateSecret(id, secret);
+      unsavedSecrets.delete(id);
+    },
+    accounts: store.listPublic(),
+    identities,
+    opencodeKeys: opencodeImportKeys(),
+    names: Object.fromEntries([...PROVIDERS].map((provider) => [provider, providerName(provider)])),
+  });
+}
+
+function importLocalOnce() {
+  if (!importing) {
+    importing = importLocalLogins()
+      .catch((error) => ({ ok: false, error: error?.message || 'The logins on this computer could not be read.' }))
+      .finally(() => {
+        importing = null;
+      });
+  }
+  return importing;
 }
 
 function importPayload(provider, file) {
@@ -962,6 +1054,7 @@ ipcMain.handle('accounts:remove', (_event, id) => {
   const accounts = store.removeAccount(id);
   pruneLimitState(id);
   unsavedSecrets.delete(id);
+  keychainFollowed.delete(id);
   if (lastResult) {
     lastResult.accounts = accounts;
     delete lastResult.snapshots[id];
@@ -1015,6 +1108,31 @@ ipcMain.handle('auth:choose', async (_event, provider, options) => {
   if (!file) return { ok: false, canceled: true };
   if (readsOpenCode(provider)) return importOpenCodeKey(provider, file, options || {});
   return importPayload(provider, file);
+});
+
+ipcMain.handle('auth:local', async () => {
+  if (preview) return { ok: false, error: 'Preview mode does not import logins.' };
+  return importLocalOnce();
+});
+
+// Another folder to look in: a home with .codex, .gemini, … in it, or a
+// folder that holds one such home per account.
+ipcMain.handle('auth:local-folder', async () => {
+  if (preview) return { ok: false, error: 'Preview mode does not import logins.' };
+  const picked = await dialog.showOpenDialog(win, {
+    title: 'Choose a folder with more logins',
+    properties: ['openDirectory', 'showHiddenFiles'],
+  });
+  if (picked.canceled || !picked.filePaths[0]) return { ok: false, canceled: true };
+  const folders = loginFolders();
+  if (!folders.includes(picked.filePaths[0])) {
+    try {
+      store.updateSettings({ loginFolders: [...folders, picked.filePaths[0]] });
+    } catch (error) {
+      return { ok: false, error: error.message || 'The folder could not be saved.' };
+    }
+  }
+  return importLocalOnce();
 });
 
 app.whenReady().then(() => {

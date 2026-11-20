@@ -11,6 +11,8 @@ contextBridge.exposeInMainWorld('desk', {
   cancelSignIn: () => ipcRenderer.invoke('auth:cancel'),
   importLogin: (provider, options) => ipcRenderer.invoke('auth:import', provider, options),
   chooseAuthFile: (provider, options) => ipcRenderer.invoke('auth:choose', provider, options),
+  importLocalLogins: () => ipcRenderer.invoke('auth:local'),
+  addLoginFolder: () => ipcRenderer.invoke('auth:local-folder'),
   setTheme: (theme) => ipcRenderer.invoke('window:theme', theme),
   setRefresh: (minutes) => ipcRenderer.invoke('window:refresh', minutes),
   setAlarmSound: (enabled) => ipcRenderer.invoke('window:alarm-sound', enabled),

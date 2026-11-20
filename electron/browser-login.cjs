@@ -52,7 +52,13 @@ async function openLoopback(spec, handler) {
   }
   return {
     close() {
-      servers.forEach((server) => server.close());
+      servers.forEach((server) => {
+        server.close();
+        // close() only stops new connections. A browser keeps its socket to
+        // the port alive, so without this the next sign-in's callback can
+        // land on this finished flow and be turned away as a mismatch.
+        if (typeof server.closeAllConnections === 'function') server.closeAllConnections();
+      });
     },
   };
 }
@@ -130,39 +136,43 @@ function signInLoopback(provider, onProgress, session) {
 
     let received = false;
     const handler = (request, response) => {
+      // Every answer closes its socket, so the browser cannot carry a later
+      // sign-in's callback over to this flow.
+      response.shouldKeepAlive = false;
       const requestUrl = new URL(request.url || '/', spec.redirect);
       if (requestUrl.pathname !== spec.path) {
-        response.writeHead(404, { 'Content-Type': 'text/plain' });
+        response.writeHead(404, { 'Content-Type': 'text/plain', Connection: 'close' });
         response.end('Not found');
+        return;
+      }
+      // A tab from an earlier sign-in (each one starts a new handshake on
+      // the same port) must not end this one. Turn it away and keep waiting.
+      if (requestUrl.searchParams.get('state') !== flow.state) {
+        response.writeHead(400, { 'Content-Type': 'text/html; charset=utf-8', Connection: 'close' });
+        response.end(htmlPage('Earlier sign-in', 'This tab is from an earlier sign-in. Use the newest sign-in tab, or start again in Usage Monitor.'));
         return;
       }
       const error = requestUrl.searchParams.get('error_description') || requestUrl.searchParams.get('error');
       if (error) {
-        response.writeHead(400, { 'Content-Type': 'text/html; charset=utf-8' });
+        response.writeHead(400, { 'Content-Type': 'text/html; charset=utf-8', Connection: 'close' });
         response.end(htmlPage('Sign-in stopped', 'Sign-in was not approved. You can close this tab.'));
         finish({ ok: false, error: 'Sign-in was not approved.' });
         return;
       }
-      if (requestUrl.searchParams.get('state') !== flow.state) {
-        response.writeHead(400, { 'Content-Type': 'text/html; charset=utf-8' });
-        response.end(htmlPage('Sign-in stopped', 'This sign-in did not match the one Usage Monitor started.'));
-        finish({ ok: false, error: 'The sign-in handshake did not match. Try again.' });
-        return;
-      }
       if (received) {
-        response.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+        response.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', Connection: 'close' });
         response.end(htmlPage('Signed in', 'Signed in. You can close this tab and return to Usage Monitor.'));
         return;
       }
       received = true;
       const code = requestUrl.searchParams.get('code');
       if (!code) {
-        response.writeHead(400, { 'Content-Type': 'text/html; charset=utf-8' });
+        response.writeHead(400, { 'Content-Type': 'text/html; charset=utf-8', Connection: 'close' });
         response.end(htmlPage('Sign-in stopped', 'The browser did not return a login code.'));
         finish({ ok: false, error: 'The browser did not return a login code.' });
         return;
       }
-      response.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+      response.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', Connection: 'close' });
       response.end(htmlPage('Signed in', 'Signed in. You can close this tab and return to Usage Monitor.'));
       exchange(spec, { code, verifier: flow.verifier, state: flow.state })
         .then((tokens) => {
