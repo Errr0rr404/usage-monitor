@@ -160,14 +160,17 @@ function renderComputerCard(computer, index, total) {
   }
   if (offline) {
     const retry = Number.isFinite(status.retryAt) ? ` data-retry="${status.retryAt}"` : '';
-    body = `<p class="error computer-offline"><strong>Offline.</strong> ${esc(status.error)} <span class="retry"${retry}>${esc(status.checking ? 'retrying now' : retryPhrase(status.retryAt))}</span></p>${reading ? body : ''}`;
+    body = `<p class="error computer-offline"><strong>Unreachable.</strong> ${esc(status.error)} <span class="retry"${retry}>${esc(status.checking ? 'retrying now' : retryPhrase(status.retryAt))}</span></p>${reading ? body : ''}`;
   }
   const subtitle = reading?.model ? `<span class="plan">${esc(reading.model)}</span>` : '';
+  const viaTunnel = !offline && reading?.via === 'tunnel'
+    ? ` <span class="via-tunnel" title="${esc(`The home network did not answer, so this reading came through ${reading.tunnel || 'the SSH tunnel'}.`)}">via tunnel</span>`
+    : '';
   return `<article class="account computer${computer.local ? ' local' : ''}${offline ? ' offline' : ''}" data-computer="${esc(computer.id)}">
     <div class="account-head">
       <div class="account-title">
         <p class="provider-kicker computer-kicker">${esc(computerKicker(computer, reading))}</p>
-        <h3 title="${esc([computer.name, reading?.model].filter(Boolean).join(' · '))}">${esc(computer.name)}${subtitle ? ` ${subtitle}` : ''}</h3>
+        <h3 title="${esc([computer.name, reading?.model].filter(Boolean).join(' · '))}">${esc(computer.name)}${subtitle ? ` ${subtitle}` : ''}${viaTunnel}</h3>
       </div>
       <div class="account-actions">${computerActions(computer, index, total)}</div>
     </div>
@@ -180,7 +183,7 @@ function renderComputerCompact(computer) {
   const reading = status.reading;
   let text = 'Checking…';
   let detail = '';
-  if (status.error && status.failures > 0) text = 'Offline';
+  if (status.error && status.failures > 0) text = 'Unreachable';
   else if (reading) {
     // GPU stays out of the one-line view so every row fits the same three
     // values; it is still in the row's hover text and in the rings.
@@ -192,7 +195,8 @@ function renderComputerCompact(computer) {
   const worst = reading && !(status.error && status.failures > 0)
     ? [useTone(reading.cpu?.percent), memoryTone(reading.memory), useTone(reading.disk?.percent)].find((tone) => tone !== 'ok')
     : (status.error && status.failures > 0 ? 'empty' : '');
-  return `<div class="compact-row"><strong title="${esc(computer.local ? 'This computer' : computer.target)}">${esc(computer.name)}</strong><span class="${worst ? `tone-${worst}` : ''}" title="${esc(status.error || detail || text)}">${esc(text)}</span></div>`;
+  const tunnel = reading?.via === 'tunnel' && !(status.error && status.failures > 0);
+  return `<div class="compact-row"><strong title="${esc(computer.local ? 'This computer' : computer.target)}">${esc(computer.name)}${tunnel ? ' <span class="via-tunnel">tunnel</span>' : ''}</strong><span class="${worst ? `tone-${worst}` : ''}" title="${esc(status.error || detail || text)}">${esc(text)}</span></div>`;
 }
 
 function renderComputers() {
