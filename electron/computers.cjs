@@ -16,6 +16,7 @@ const {
   nextDelayMs,
 } = require('../lib/computers.cjs');
 const { LOCAL_ID } = require('../lib/computer-list.cjs');
+const { readRoutes, judgeAttempt } = require('../lib/computer-route.cjs');
 
 const windows = process.platform === 'win32';
 const children = new Set();
@@ -119,14 +120,35 @@ async function readLocal() {
   return reading;
 }
 
-async function readRemote(computer) {
-  const result = await runProbe(sshBinary(), sshArgs(computer, { controlPath: controlPath() }));
-  if (result.spawnError) return { ok: false, error: 'SSH is not installed on this computer.' };
-  if (result.timedOut) return { ok: false, error: `No reading within ${Math.round(PROBE_TIMEOUT_MS / 1000)} seconds.` };
-  if (result.code !== 0 && !result.stdout.includes('@@end')) {
-    return { ok: false, error: explainSshError(result.stderr, result.code, { target: computer.target }) };
+// One ssh attempt to one route, judged into { ok, reading | error, network }.
+async function attempt(step) {
+  const result = await runProbe(
+    sshBinary(),
+    sshArgs({ target: step.target, port: step.port }, { controlPath: controlPath(), connectTimeout: step.connectTimeout }),
+    PROBE_TIMEOUT_MS,
+  );
+  return judgeAttempt(result, parseProbe, { target: step.target });
+}
+
+// ~/.ssh/config is read at most every 30 seconds: a refresh runs every 5.
+let hostsCache = { at: 0, hosts: [] };
+function cachedHosts() {
+  if (Date.now() - hostsCache.at > 30000) {
+    let hosts = [];
+    try {
+      hosts = sshHosts();
+    } catch {
+      hosts = [];
+    }
+    hostsCache = { at: Date.now(), hosts };
   }
-  return parseProbe(result.stdout);
+  return hostsCache.hosts;
+}
+
+const routeMemory = new Map();
+
+async function readRemote(computer) {
+  return readRoutes({ computer, hosts: cachedHosts(), run: attempt, memory: routeMemory });
 }
 
 // Host aliases the person already set up, read from ~/.ssh/config only.

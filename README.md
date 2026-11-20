@@ -86,6 +86,8 @@ Each computer gets four rings in the same style as the AI cards: CPU, RAM, GPU, 
 
 This computer is always first and cannot be removed. While the computers are on screen, readings refresh every 5 seconds. Otherwise they refresh once a minute.
 
+Away from home Wi-Fi, a computer is tried through its tunnel. The home network goes first (4 seconds); if nothing answers, Usage Monitor tries the `<name>-r` alias from `~/.ssh/config` (for example `bosgame` then `bosgame-r`, a `ProxyJump` through a server you can reach from anywhere). A card read that way shows a "via tunnel" badge. A computer that answers on neither route stays on the list as "Unreachable", with what each route said. A refused login or an unknown host key does not trigger the tunnel, since it would fail the same way. To pick the tunnel yourself, set `fallback` on the computer to an ssh alias.
+
 On a Mac, computers on your home network (`.local` names, 192.168.x, 10.x, 172.16 to 31.x, link-local) need macOS's Local Network permission. macOS may not ask for it, or you may have said no. In that case the card shows "No route to that computer" with a hint to turn on System Settings › Privacy & Security › Local Network › Usage Monitor.
 
 ### Side by side
